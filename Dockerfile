@@ -3,6 +3,7 @@ FROM node:22-bullseye-slim AS builder
 WORKDIR /app/src/ideNew
 
 ENV NEXT_TELEMETRY_DISABLED=1
+ARG USE_PREBUILT=false
 
 # Build this image from repository root:
 # docker build -f src/ideNew/Dockerfile .
@@ -16,7 +17,7 @@ RUN mkdir -p /app/src \
 COPY src/packages /app/src/packages
 COPY src/ideNew /app/src/ideNew
 
-RUN npm run build
+RUN if [ "$USE_PREBUILT" != "true" ]; then npm run build; fi
 
 FROM node:22-bullseye-slim AS runner
 
