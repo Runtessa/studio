@@ -42,6 +42,8 @@ COPY --from=builder /app/src/ideNew/tailwind.config.js ./tailwind.config.js
 
 ENV PORT=3000
 
+RUN chown -R node:node /app/src/ideNew
+
 USER node
 
 CMD ["npm", "run", "start"]
