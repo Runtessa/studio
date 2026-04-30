@@ -8,6 +8,7 @@ import { In } from 'typeorm';
 import { encryptSecret } from '@/lib/crypto';
 import { canonicalizeAdapterConfig, parseAdapterConfig } from '@/lib/tenant-adapter-config';
 import { canWriteTenantForUser, getTenantScopeForUser } from '@/lib/team-tenant-access';
+import { seedTenantStarterProject } from '@/lib/tenantStarterProject';
 
 const DEFAULT_RESOURCE_CONFIG = { memory: 512, timeout: 5000 };
 const DEFAULT_AUTH_DB_CONFIG = { mode: 'shared' as const, secretKey: null as string | null };
@@ -202,30 +203,37 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
       return;
     }
 
-    const tenant = repo.create({
-      hostname,
-      isSuspended,
-      allowRegistration,
-      resourceConfig,
-      authDbConfig,
-      adapterAccess,
-      adapterConfig: normalizedAdapterConfig,
-    });
-    await repo.save(tenant);
-    if (adapterConfig.secrets) {
-      const secretRepo = CoreDataSource.getRepository(Secret);
-      for (const [keyName, value] of Object.entries(adapterConfig.secrets)) {
-        const encrypted = encryptSecret(value);
-        const secret = secretRepo.create({
-          tenant,
-          keyName,
-          encryptedValue: encrypted.encryptedValue,
-          iv: encrypted.iv,
-          authTag: encrypted.authTag,
-        });
-        await secretRepo.save(secret);
+    const tenant = await CoreDataSource.transaction(async (manager) => {
+      const tenantRepo = manager.getRepository(Tenant);
+      const secretRepo = manager.getRepository(Secret);
+      const createdTenant = tenantRepo.create({
+        hostname,
+        isSuspended,
+        allowRegistration,
+        resourceConfig,
+        authDbConfig,
+        adapterAccess,
+        adapterConfig: normalizedAdapterConfig,
+      });
+      await tenantRepo.save(createdTenant);
+
+      if (adapterConfig.secrets) {
+        for (const [keyName, value] of Object.entries(adapterConfig.secrets)) {
+          const encrypted = encryptSecret(value);
+          const secret = secretRepo.create({
+            tenant: createdTenant,
+            keyName,
+            encryptedValue: encrypted.encryptedValue,
+            iv: encrypted.iv,
+            authTag: encrypted.authTag,
+          });
+          await secretRepo.save(secret);
+        }
       }
-    }
+
+      await seedTenantStarterProject(manager, createdTenant);
+      return createdTenant;
+    });
 
     res.status(201).json({ tenant: serializeTenant(tenant, true) });
     return;
