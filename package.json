@@ -37,6 +37,7 @@
     "sqlite3": "^5.1.7",
     "tailwindcss": "3.4.14",
     "tedious": "^19.2.0",
+    "typescript": "5.9.3",
     "typeorm": "^0.3.28",
     "zod": "^3.25.76"
   },
@@ -51,7 +52,6 @@
     "@types/react-icons": "latest",
     "@types/source-map-support": "^0.5.10",
     "cross-env": "^10.1.0",
-    "lightningcss": "^1.30.2",
-    "typescript": "5.9.3"
+    "lightningcss": "^1.30.2"
   }
 }

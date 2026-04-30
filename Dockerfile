@@ -1,44 +1,32 @@
-FROM node:22-bullseye-slim AS builder
-
-WORKDIR /app/src/ideNew
-
-ENV NEXT_TELEMETRY_DISABLED=1
-ARG USE_PREBUILT=false
-
-# Build this image from repository root:
-# docker build -f src/ideNew/Dockerfile .
-COPY src/packages/shared /app/src/packages/shared
-COPY src/ideNew/package*.json ./
-
-RUN npm install
-RUN mkdir -p /app/src \
-    && ln -s /app/src/ideNew/node_modules /app/src/node_modules
-
-COPY src/packages /app/src/packages
-COPY src/ideNew /app/src/ideNew
-
-RUN if [ "$USE_PREBUILT" != "true" ]; then npm run build; fi
-
-FROM node:22-bullseye-slim AS runner
+# syntax=docker/dockerfile:1.7
+FROM node:22-alpine AS runner
 
 WORKDIR /app/src/ideNew
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV NPM_CONFIG_UPDATE_NOTIFIER=false
+ENV NPM_CONFIG_FUND=false
+ENV NPM_CONFIG_AUDIT=false
+ENV NPM_CONFIG_PROGRESS=false
+ENV NPM_CONFIG_PREFER_OFFLINE=true
+ENV NPM_CONFIG_FETCH_RETRIES=10
+ENV NPM_CONFIG_FETCH_RETRY_MINTIMEOUT=30000
+ENV NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT=300000
+ENV NPM_CONFIG_FETCH_TIMEOUT=1800000
 
-COPY --from=builder /app/src/ideNew/package*.json ./
-COPY --from=builder /app/src/ideNew/node_modules ./node_modules
-COPY --from=builder /app/src/packages/shared /app/src/packages/shared
-RUN npm prune --omit=dev --ignore-scripts \
+COPY .docker-build/ideNew/src/packages/shared /app/src/packages/shared
+COPY .docker-build/ideNew/package.json ./
+COPY .docker-build/ideNew/package-lock.json ./
+RUN --mount=type=cache,target=/root/.npm,id=npm-ide,sharing=locked \
+    npm ci --omit=dev --ignore-scripts --no-audit --no-fund \
     && npm cache clean --force
 RUN mkdir -p /app/src \
     && ln -s /app/src/ideNew/node_modules /app/src/node_modules
 
-COPY --from=builder /app/src/ideNew/.next ./.next
-COPY --from=builder /app/src/ideNew/public ./public
-COPY --from=builder /app/src/ideNew/next.config.mjs ./next.config.mjs
-COPY --from=builder /app/src/ideNew/postcss.config.js ./postcss.config.js
-COPY --from=builder /app/src/ideNew/tailwind.config.js ./tailwind.config.js
+COPY .docker-build/ideNew/.next ./.next
+COPY .docker-build/ideNew/public ./public
+COPY .docker-build/ideNew/next.config.mjs ./next.config.mjs
 
 ENV PORT=3000
 
