@@ -7,7 +7,7 @@ import { compileUiSource } from '@/lib/assistant/compiler';
 const STARTER_MODULE_ROUTE = '/api/hello';
 const STARTER_MODULE_METHOD = HttpMethod.GET;
 const STARTER_MODEL_PATH = 'models/ExampleItem.js';
-const STARTER_UI_NAME = 'Dashboard';
+const STARTER_UI_NAME = '@app/dashboard';
 const STARTER_UI_VERSION = '1.0.0';
 
 const STARTER_MODULE_CODE = `/** @type {IdpModuleHandler} */
@@ -49,7 +49,7 @@ module.exports = { ExampleItem };
 
 const STARTER_UI_CODE = `import React from "react";
 
-export default function HelloGlass() {
+export default function App() {
   return (
     <div className="relative min-h-screen flex items-center justify-center bg-[#0b1220]">
       {/* Circuit-style background */}

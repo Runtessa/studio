@@ -43,7 +43,7 @@ export const useEditorShortcuts = ({
         // Allow modifier shortcuts even while typing, but ignore plain keys.
       }
 
-      const key = event.key.toLowerCase();
+      const key = event?.key?.toLowerCase();
       if (key === 'f5') {
         event.preventDefault();
         requestReload();
