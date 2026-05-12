@@ -87,6 +87,13 @@ const navItems: NavItem[] = [
     permission: "ide.monitoring.read",
   },
   {
+    label: "Publish Requests",
+    href: "/admin/publish-requests",
+    icon: FiPackage,
+    match: "/admin/publish-requests",
+    permission: "ide.ui.publish",
+  },
+  {
     label: "Containers",
     href: "/admin/containers",
     icon: FiServer,

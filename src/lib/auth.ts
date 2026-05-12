@@ -92,8 +92,12 @@ const resolveRoutePermission = (req: NextApiRequest): IdePermission | null => {
   if (pathname.startsWith('/api/admin/logs')) {
     return 'ide.logs.read';
   }
-  if (pathname.startsWith('/api/admin/settings')) {
-    return 'ide.settings.manage';
+  if (pathname.startsWith('/api/admin/publish-requests')) {
+    return 'ide.ui.publish';
+  }
+  if (pathname.startsWith('/api/publish-requests')) {
+    const isApproveOrReject = pathname.includes('/approve') || pathname.includes('/reject');
+    return isApproveOrReject ? 'ide.ui.publish' : null;
   }
   return null;
 };

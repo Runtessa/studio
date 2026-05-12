@@ -3,6 +3,7 @@ import { useRouter } from 'next/router';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { DataCard } from '@/components/ui/DataCard';
 import { DataTable } from '@/components/ui/DataTable';
+import { Pagination } from '@/components/ui/Pagination';
 import { Button } from '@/components/ui/Button';
 import { fetchJson } from '@/lib/client/api';
 import { useSessionToken } from '@/lib/client/session';
@@ -111,29 +112,12 @@ export default function AdminUsersPage() {
               </tr>
             ))}
           </DataTable>
-          <div className="flex items-center justify-between px-2">
-            <div className="text-sm text-textMuted">
-              Page {page} of {Math.ceil(total / limit) || 1}
-            </div>
-            <div className="flex gap-2">
-              <Button
-                variant="secondary"
-                size="sm"
-                disabled={page <= 1}
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-              >
-                Previous
-              </Button>
-              <Button
-                variant="secondary"
-                size="sm"
-                disabled={page >= Math.ceil(total / limit)}
-                onClick={() => setPage((p) => p + 1)}
-              >
-                Next
-              </Button>
-            </div>
-          </div>
+          <Pagination
+            page={page}
+            total={total}
+            limit={limit}
+            onPageChange={setPage}
+          />
         </div>
       </DataCard>
 

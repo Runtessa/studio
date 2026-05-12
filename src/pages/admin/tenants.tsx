@@ -3,6 +3,7 @@ import { useRouter } from 'next/router';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { DataCard } from '@/components/ui/DataCard';
 import { DataTable } from '@/components/ui/DataTable';
+import { Pagination } from '@/components/ui/Pagination';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { useToast } from '@/components/ui/Toast';
@@ -45,23 +46,18 @@ export default function AdminTenantsPage() {
     setSelectedTenant(getSelectedTenantHost());
   }, []);
 
-  const loadTenants = async (targetPage = 1, append = false) => {
+  const loadTenants = async (targetPage = 1) => {
     if (!token) return;
-    if (append) {
-      setLoadingMore(true);
-    } else {
-      setLoading(true);
-    }
+    setLoading(true);
     setError('');
     try {
       const data = await fetchJson(
         `/api/admin/tenants?page=${targetPage}&limit=${pageSize}`,
         { token }
       );
-      const nextTenants = data.tenants || [];
-      setTenants((prev) => (append ? [...prev, ...nextTenants] : nextTenants));
+      setTenants(data.tenants || []);
       setPage(data.page ?? targetPage);
-      setTotal(typeof data.total === 'number' ? data.total : nextTenants.length);
+      setTotal(typeof data.total === 'number' ? data.total : (data.tenants || []).length);
       setCanCreateTenants(Boolean(data.canCreate));
     } catch (err: any) {
       setError(err.message);
@@ -69,11 +65,7 @@ export default function AdminTenantsPage() {
         setToken('');
       }
     } finally {
-      if (append) {
-        setLoadingMore(false);
-      } else {
-        setLoading(false);
-      }
+      setLoading(false);
     }
   };
 
@@ -92,7 +84,7 @@ export default function AdminTenantsPage() {
           router.replace('/dashboard');
           return;
         }
-        await loadTenants(1, false);
+        await loadTenants(page);
       } catch (err: any) {
         setError(err.message);
         if (err.message?.toLowerCase().includes('unauthorized')) {
@@ -101,7 +93,7 @@ export default function AdminTenantsPage() {
       }
     };
     bootstrap();
-  }, [token, ready, setToken, router]);
+  }, [token, ready, setToken, router, page]);
 
   const openDeleteModal = (tenant: TenantSummary) => {
     setDeleteTarget(tenant);
@@ -133,7 +125,7 @@ export default function AdminTenantsPage() {
         setSelectedTenant('');
       }
       closeDeleteModal();
-      await loadTenants(1, false);
+      await loadTenants(1);
     } catch (err: any) {
       setError(err.message);
     }
@@ -238,19 +230,12 @@ export default function AdminTenantsPage() {
             </tr>
           ))}
         </DataTable>
-        <div className="mt-4 flex items-center justify-between text-xs text-textMuted">
-          <span>
-            Page {page} · {total} total
-          </span>
-          <Button
-            variant="secondary"
-            size="sm"
-            disabled={loadingMore || tenants.length >= total}
-            onClick={() => loadTenants(page + 1, true)}
-          >
-            {loadingMore ? 'Loading…' : tenants.length >= total ? 'No more' : 'Load more'}
-          </Button>
-        </div>
+        <Pagination
+          page={page}
+          total={total}
+          limit={pageSize}
+          onPageChange={setPage}
+        />
       </DataCard>
 
       <Modal

@@ -108,10 +108,32 @@ export const useEditorPublishActions = ({
     }
   }, [publishStagingItem, reloadTree, showError, stagingBusy, stagingItems, success]);
 
+  const requestPublish = useCallback(
+    async (itemIds: string[], comment: string) => {
+      if (stagingBusy) return;
+      try {
+        setStagingBusy(true);
+        setStagingBusyId('__request__');
+        await apiFetch('/api/publish-requests', {
+          method: 'POST',
+          body: { itemIds, comment },
+        });
+        success('Publish request submitted for admin review');
+      } catch (err) {
+        showError((err as Error).message || 'Request failed');
+      } finally {
+        setStagingBusy(false);
+        setStagingBusyId(null);
+      }
+    },
+    [apiFetch, showError, stagingBusy, success],
+  );
+
   return {
     stagingBusy,
     stagingBusyId,
     publishTarget,
     publishAllStagingTargets,
+    requestPublish,
   };
 };

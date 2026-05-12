@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { DataCard } from '@/components/ui/DataCard';
 import { DataTable } from '@/components/ui/DataTable';
+import { Pagination } from '@/components/ui/Pagination';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { useAdminGuard } from '@/lib/client/use-admin-guard';
@@ -152,29 +153,12 @@ export default function AdminTeamsListPage() {
             ))}
           </DataTable>
 
-          <div className="flex items-center justify-between text-xs text-textMuted">
-            <span>
-              Page {page} / {totalPages}
-            </span>
-            <div className="flex gap-2">
-              <Button
-                variant="secondary"
-                size="xs"
-                disabled={page <= 1}
-                onClick={() => setPage((prev) => Math.max(1, prev - 1))}
-              >
-                Previous
-              </Button>
-              <Button
-                variant="secondary"
-                size="xs"
-                disabled={page >= totalPages}
-                onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
-              >
-                Next
-              </Button>
-            </div>
-          </div>
+          <Pagination
+            page={page}
+            total={total}
+            limit={limit}
+            onPageChange={setPage}
+          />
         </div>
       </DataCard>
     </div>

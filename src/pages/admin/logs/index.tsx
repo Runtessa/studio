@@ -3,6 +3,7 @@ import { useRouter } from 'next/router';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { DataCard } from '@/components/ui/DataCard';
 import { DataTable } from '@/components/ui/DataTable';
+import { Pagination } from '@/components/ui/Pagination';
 import { Select } from '@/components/ui/Select';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
@@ -158,29 +159,12 @@ export default function AdminLogsPage() {
             ))}
           </DataTable>
 
-          <div className="flex items-center justify-between px-2 pt-3">
-            <div className="text-sm text-textMuted">
-              Page {page} of {totalPages}
-            </div>
-            <div className="flex gap-2">
-              <Button
-                variant="secondary"
-                size="sm"
-                disabled={page <= 1 || loading}
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-              >
-                Previous
-              </Button>
-              <Button
-                variant="secondary"
-                size="sm"
-                disabled={page >= totalPages || loading}
-                onClick={() => setPage((p) => p + 1)}
-              >
-                Next
-              </Button>
-            </div>
-          </div>
+          <Pagination
+            page={page}
+            total={total}
+            limit={limit}
+            onPageChange={setPage}
+          />
         </div>
       </DataCard>
     </div>

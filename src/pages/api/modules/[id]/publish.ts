@@ -51,7 +51,9 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
 
   await redis.del(
     `module:published:${tenant.id}:${previousMethod}`,
-    `module:published:${tenant.id}:${nextMethod}`
+    `module:published:${tenant.id}:${nextMethod}`,
+    `module:published:${tenant.id}:${previousMethod}:is_publish_workflow`,
+    `module:published:${tenant.id}:${nextMethod}:is_publish_workflow`
   );
 
   res.status(200).json(serialize(mod));
