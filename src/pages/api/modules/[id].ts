@@ -174,7 +174,10 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
     }
     await createRevision(mod, tenant, user.id, 'delete');
     const method = (mod.publishedMethod ?? mod.method) as HttpMethod;
-    await redis.del(`module:published:${tenant.id}:${method}`);
+    await redis.del(
+      `module:published:${tenant.id}:${method}`,
+      `module:published:${tenant.id}:${method}:is_publish_workflow`
+    );
     await repo.remove(mod);
     res.status(204).end();
     return;

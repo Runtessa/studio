@@ -1182,7 +1182,7 @@ export default function EditorPage() {
     () => stagingItems.filter((item) => !item.dirty).length,
     [stagingItems]
   );
-  const { stagingBusy, stagingBusyId, publishTarget, publishAllStagingTargets } =
+  const { stagingBusy, stagingBusyId, requestPublish } =
     useEditorPublishActions({
       apiFetch,
       adminFetch,
@@ -1768,8 +1768,7 @@ export default function EditorPage() {
                   stagingPublishableCount={stagingPublishableCount}
                   stagingBusy={stagingBusy}
                   stagingBusyId={stagingBusyId}
-                  onPublish={publishTarget}
-                  onPublishAll={publishAllStagingTargets}
+                  onRequestPublish={requestPublish}
                   formatTimestamp={formatHistoryTimestamp}
                 />
               ) : (
