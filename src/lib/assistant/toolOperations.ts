@@ -9,6 +9,8 @@ import {
   GlobalModulePackage,
   GlobalModulePackageFile,
   OrmModel,
+  SourceCode,
+  CompiledCode,
 } from '@idp/shared';
 import redis from '@/lib/redis';
 import { generateVersion } from '@/lib/version';
@@ -115,10 +117,22 @@ export const updateUiPackage = async (
   }>
 ) => {
   const repo = CoreDataSource.getRepository(UIPackage);
+  const sourceRepo = CoreDataSource.getRepository(SourceCode);
+  const compiledRepo = CoreDataSource.getRepository(CompiledCode);
+
+  // Ensure relations are loaded
+  if (!pkg.sourceCode || !pkg.compiledCode) {
+    const reloaded = await repo.findOne({
+      where: { id: pkg.id },
+      relations: ['sourceCode', 'compiledCode'],
+    });
+    if (reloaded) pkg = reloaded;
+  }
+
   const nextName = nextValues.name ?? pkg.name;
   const nextVersion = nextValues.version ?? pkg.version;
   const nextExt = nextValues.fileExtension ?? pkg.fileExtension;
-  const nextCode = nextValues.code ?? pkg.code ?? '';
+  const nextCode = nextValues.code ?? pkg.sourceCode?.code ?? '';
   assertUiCodeIsRuntimeSafe(nextCode);
   assertDashboardEntrypointCode(nextName, nextCode);
   assertNonDashboardDoesNotDefineAppEntrypoint(nextName, nextCode);
@@ -155,10 +169,19 @@ export const updateUiPackage = async (
 
   await createUiRevision(pkg, ctx.tenant, ctx.userId, 'update');
 
+  if (nextCode !== pkg.sourceCode?.code) {
+    const sc = sourceRepo.create({ code: nextCode });
+    await sourceRepo.save(sc);
+    pkg.sourceCode = sc;
+  }
+  if (compiled !== pkg.compiledCode?.code) {
+    const cc = compiledRepo.create({ code: compiled });
+    await compiledRepo.save(cc);
+    pkg.compiledCode = cc;
+  }
+
   pkg.name = nextName;
   pkg.version = nextVersion;
-  pkg.code = nextCode;
-  pkg.codeBlob = compiled;
   pkg.dependencies = nextDeps;
   pkg.fileExtension = nextExt;
   pkg.draftVersion = generateVersion();
@@ -182,19 +205,28 @@ export const updateUiPackage = async (
 
 export const ensureDashboardEntrypoint = async (ctx: AssistantToolContext) => {
   const repo = CoreDataSource.getRepository(UIPackage);
+  const sourceRepo = CoreDataSource.getRepository(SourceCode);
+  const compiledRepo = CoreDataSource.getRepository(CompiledCode);
+
   const existing = await repo.findOne({
     where: { tenant: { id: ctx.tenant.id }, name: DASHBOARD_UI_NAME },
+    relations: ['sourceCode', 'compiledCode'],
     order: { createdAt: 'DESC' },
   });
   if (existing) return existing;
 
+  const sc = sourceRepo.create({ code: DEFAULT_DASHBOARD_CODE });
   const compiled = compileUiSource(DEFAULT_DASHBOARD_CODE, 'jsx');
+  const cc = compiledRepo.create({ code: compiled });
+  await sourceRepo.save(sc);
+  await compiledRepo.save(cc);
+
   const dashboard = repo.create({
     tenant: ctx.tenant,
     name: DASHBOARD_UI_NAME,
     version: DASHBOARD_DEFAULT_VERSION,
-    code: DEFAULT_DASHBOARD_CODE,
-    codeBlob: compiled,
+    sourceCode: sc,
+    compiledCode: cc,
     dependencies: [],
     fileExtension: 'jsx',
     draftVersion: generateVersion(),
@@ -222,8 +254,16 @@ export const updateSharedBundle = async (
       fileExtension: file.fileExtension ?? undefined,
     }))
   );
-  project.code = entrySource;
-  project.codeBlob = bundle;
+
+  const sourceRepo = CoreDataSource.getRepository(SourceCode);
+  const compiledRepo = CoreDataSource.getRepository(CompiledCode);
+  const sc = sourceRepo.create({ code: entrySource });
+  const cc = compiledRepo.create({ code: bundle });
+  await sourceRepo.save(sc);
+  await compiledRepo.save(cc);
+
+  project.sourceCode = sc;
+  project.compiledCode = cc;
   project.draftVersion = generateVersion();
   return project;
 };
@@ -335,8 +375,6 @@ export const createSharedProjectInternal = async (
     name,
     version,
     entryPath,
-    code: '',
-    codeBlob: '',
     dependencies,
     fileExtension,
     draftVersion: generateVersion(),

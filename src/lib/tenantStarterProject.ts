@@ -1,5 +1,13 @@
 import { EntityManager } from 'typeorm';
-import { HttpMethod, ModuleEntity, OrmModel, Tenant, UIPackage } from '@idp/shared';
+import {
+  HttpMethod,
+  ModuleEntity,
+  OrmModel,
+  Tenant,
+  UIPackage,
+  SourceCode,
+  CompiledCode,
+} from '@idp/shared';
 import { generateVersion } from '@/lib/version';
 import { compileOrmSource } from '@/lib/orm-compiler';
 import { compileUiSource } from '@/lib/assistant/compiler';
@@ -118,6 +126,8 @@ export const seedTenantStarterProject = async (
   const moduleRepo = manager.getRepository(ModuleEntity);
   const modelRepo = manager.getRepository(OrmModel);
   const uiRepo = manager.getRepository(UIPackage);
+  const sourceRepo = manager.getRepository(SourceCode);
+  const compiledRepo = manager.getRepository(CompiledCode);
 
   const [existingModule, existingModel, existingUi] = await Promise.all([
     moduleRepo.findOne({
@@ -143,11 +153,13 @@ export const seedTenantStarterProject = async (
   ]);
 
   if (!existingModule) {
+    const sourceCode = sourceRepo.create({ code: STARTER_MODULE_CODE });
+    await sourceRepo.save(sourceCode);
     const mod = moduleRepo.create({
       tenant,
       routePath: STARTER_MODULE_ROUTE,
       method: STARTER_MODULE_METHOD,
-      code: STARTER_MODULE_CODE,
+      sourceCode,
       fileExtension: 'js',
       draftVersion: generateVersion(),
     });
@@ -155,12 +167,16 @@ export const seedTenantStarterProject = async (
   }
 
   if (!existingModel) {
+    const sourceCode = sourceRepo.create({ code: STARTER_MODEL_CODE });
     const codeBlob = compileOrmSource(STARTER_MODEL_CODE, 'js');
+    const compiledCode = compiledRepo.create({ code: codeBlob });
+    await sourceRepo.save(sourceCode);
+    await compiledRepo.save(compiledCode);
     const model = modelRepo.create({
       tenant,
       path: STARTER_MODEL_PATH,
-      code: STARTER_MODEL_CODE,
-      codeBlob,
+      sourceCode,
+      compiledCode,
       fileExtension: 'js',
       draftVersion: generateVersion(),
     });
@@ -168,13 +184,17 @@ export const seedTenantStarterProject = async (
   }
 
   if (!existingUi) {
+    const sourceCode = sourceRepo.create({ code: STARTER_UI_CODE });
     const codeBlob = compileUiSource(STARTER_UI_CODE, 'jsx');
+    const compiledCode = compiledRepo.create({ code: codeBlob });
+    await sourceRepo.save(sourceCode);
+    await compiledRepo.save(compiledCode);
     const pkg = uiRepo.create({
       tenant,
       name: STARTER_UI_NAME,
       version: STARTER_UI_VERSION,
-      code: STARTER_UI_CODE,
-      codeBlob,
+      sourceCode,
+      compiledCode,
       dependencies: [],
       fileExtension: 'jsx',
       draftVersion: generateVersion(),

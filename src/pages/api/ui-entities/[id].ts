@@ -126,6 +126,7 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
   if (req.method === 'GET') {
     const pkg = await repo.findOne({
       where: { id: req.query.id as string, tenant: { id: tenant.id } },
+      relations: ['sourceCode', 'compiledCode', 'publishedSourceCode', 'publishedCompiledCode'],
     });
     if (!pkg) {
       res.status(404).json({ error: 'UI entity not found' });
@@ -138,6 +139,7 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
   if (req.method === 'PUT') {
     const pkg = await repo.findOne({
       where: { id: req.query.id as string, tenant: { id: tenant.id } },
+      relations: ['sourceCode', 'compiledCode', 'publishedSourceCode', 'publishedCompiledCode'],
     });
     if (!pkg) {
       res.status(404).json({ error: 'UI entity not found' });
@@ -218,6 +220,7 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
   if (req.method === 'DELETE') {
     const pkg = await repo.findOne({
       where: { id: req.query.id as string, tenant: { id: tenant.id } },
+      relations: ['sourceCode', 'compiledCode', 'publishedSourceCode', 'publishedCompiledCode'],
     });
     if (!pkg) {
       res.status(404).json({ error: 'UI entity not found' });

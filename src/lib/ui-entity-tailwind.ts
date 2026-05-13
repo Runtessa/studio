@@ -1,5 +1,6 @@
 import { CoreDataSource } from '@/lib/core-db';
 import { UIPackage } from '@idp/shared';
+import { SourceCode, CompiledCode } from '@idp/shared';
 import redis from '@/lib/redis';
 import { generateVersion } from '@/lib/version';
 import { ILike, In } from 'typeorm';
@@ -29,23 +30,30 @@ export const upsertTailwindPackage = async (
   css: string
 ) => {
   const repo = CoreDataSource.getRepository(UIPackage);
+  const sourceRepo = CoreDataSource.getRepository(SourceCode);
+  const compiledRepo = CoreDataSource.getRepository(CompiledCode);
   let pkg = await repo.findOne({
     where: { tenant: { id: tenantId }, name, version },
+    relations: ['sourceCode', 'compiledCode'],
   });
+  const sourceCode = sourceRepo.create({ code: css });
+  const compiledCode = compiledRepo.create({ code: css });
+  await sourceRepo.save(sourceCode);
+  await compiledRepo.save(compiledCode);
   if (!pkg) {
     pkg = repo.create({
       tenant: { id: tenantId } as UIPackage['tenant'],
       name,
       version,
-      code: css,
-      codeBlob: css,
+      sourceCode,
+      compiledCode,
       dependencies: [],
       fileExtension: 'css',
       draftVersion: generateVersion(),
     });
   } else {
-    pkg.code = css;
-    pkg.codeBlob = css;
+    pkg.sourceCode = sourceCode;
+    pkg.compiledCode = compiledCode;
     pkg.dependencies = [];
     pkg.fileExtension = 'css';
     pkg.draftVersion = generateVersion();
@@ -77,12 +85,13 @@ export const publishTailwindPackage = async (
   const repo = CoreDataSource.getRepository(UIPackage);
   const pkg = await repo.findOne({
     where: { tenant: { id: tenantId }, name, version },
+    relations: ['sourceCode', 'compiledCode'],
   });
   if (!pkg) return null;
 
   pkg.publishedVersion = generateVersion();
-  pkg.publishedCode = pkg.code;
-  pkg.publishedCodeBlob = pkg.codeBlob;
+  pkg.publishedSourceCode = pkg.sourceCode;
+  pkg.publishedCompiledCode = pkg.compiledCode;
   pkg.publishedDependencies = [];
   pkg.publishedFileExtension = pkg.fileExtension;
   pkg.publishedAt = new Date();
@@ -110,18 +119,22 @@ export const loadTailwindConfigForTenant = async (tenantId: string) => {
         name: ILike('%tailwind.config%'),
       },
     ],
+    relations: ['sourceCode', 'compiledCode'],
     order: { updatedAt: 'DESC' },
     take: 5,
   });
   const configPkg = candidates.find((pkg) => isTailwindConfigName(pkg.name));
   if (!configPkg) return null;
-  const source = configPkg.code ?? configPkg.codeBlob ?? '';
+  const source = configPkg.sourceCode?.code ?? configPkg.compiledCode?.code ?? '';
   return parseTailwindConfig(source);
 };
 
 export const rebuildTailwindPackagesForTenant = async (tenantId: string) => {
   const repo = CoreDataSource.getRepository(UIPackage);
-  const packages = await repo.find({ where: { tenant: { id: tenantId } } });
+  const packages = await repo.find({
+    where: { tenant: { id: tenantId } },
+    relations: ['sourceCode', 'compiledCode'],
+  });
   const config = await loadTailwindConfigForTenant(tenantId);
   const buildTargets = packages.filter(
     (pkg) =>
@@ -130,7 +143,7 @@ export const rebuildTailwindPackagesForTenant = async (tenantId: string) => {
       shouldBuildTailwind(pkg.fileExtension)
   );
   for (const pkg of buildTargets) {
-    const source = pkg.code ?? pkg.codeBlob ?? '';
+    const source = pkg.sourceCode?.code ?? pkg.compiledCode?.code ?? '';
     const css = await buildTailwindCss(source, pkg.fileExtension, config ?? undefined);
     await upsertTailwindPackage(
       tenantId,

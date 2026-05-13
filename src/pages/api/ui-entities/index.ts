@@ -95,6 +95,7 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
     const repo = CoreDataSource.getRepository(UIPackage);
     const packages = await repo.find({
       where: { tenant: { id: tenant.id } },
+      relations: ['sourceCode', 'compiledCode', 'publishedSourceCode', 'publishedCompiledCode'],
       order: { name: 'ASC', version: 'DESC' },
     });
     res.status(200).json(packages.filter((pkg) => !isTailwindPackageName(pkg.name)).map(serialize));

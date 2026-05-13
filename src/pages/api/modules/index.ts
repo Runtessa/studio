@@ -85,6 +85,7 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
     const repo = CoreDataSource.getRepository(ModuleEntity);
     const modules = await repo.find({
       where: { tenant: { id: tenant.id } },
+      relations: ['sourceCode', 'publishedSourceCode'],
       order: { routePath: 'ASC', method: 'ASC' },
     });
     res.status(200).json(modules.map(serialize));

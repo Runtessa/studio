@@ -6,7 +6,7 @@ import { Secret } from '@idp/shared';
 import { Tenant } from '@idp/shared';
 import { UIPackage } from '@idp/shared';
 import { ModuleRevision } from '@idp/shared';
-import { UIPackageRevision } from '@idp/shared';
+import { UIPackageRevision, SourceCode, CompiledCode } from '@idp/shared';
 import { GlobalModuleEndpoint } from '@idp/shared';
 import { GlobalModulePackage } from '@idp/shared';
 import { GlobalModulePackageFile } from '@idp/shared';
@@ -58,6 +58,8 @@ const baseOptions = {
     GlobalUIPackageFile,
     ModuleRevision,
     UIPackageRevision,
+    SourceCode,
+    CompiledCode,
     OrmModel,
     PublishRequest,
   ],
@@ -115,6 +117,11 @@ export const ensureCoreSchema = async () => {
         const hasAclEndpoints =
           hasTenantTable && (await queryRunner.hasColumn('tenants', 'aclEndpoints'));
         const hasOrmModels = await queryRunner.hasTable('orm_models');
+        const hasModulesTable = await queryRunner.hasTable('modules');
+        const hasModuleSourceCodeId =
+          hasModulesTable && (await queryRunner.hasColumn('modules', 'source_code_id'));
+        const hasSourceCodesTable = await queryRunner.hasTable('source_codes');
+        const hasCompiledCodesTable = await queryRunner.hasTable('compiled_codes');
         const hasAccountsTable = await queryRunner.hasTable('accounts');
         const hasAccountGroups =
           hasAccountsTable && (await queryRunner.hasColumn('accounts', 'groups'));
@@ -138,6 +145,10 @@ export const ensureCoreSchema = async () => {
           !hasAclRoles ||
           !hasAclEndpoints ||
           !hasOrmModels ||
+          !hasModulesTable ||
+          !hasModuleSourceCodeId ||
+          !hasSourceCodesTable ||
+          !hasCompiledCodesTable ||
           !hasAccountGroups ||
           !hasPublishRequests
         ) {

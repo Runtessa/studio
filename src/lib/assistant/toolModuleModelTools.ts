@@ -1,7 +1,13 @@
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import { CoreDataSource, ensureCoreSchema } from '@/lib/core-db';
-import { HttpMethod, ModuleEntity, OrmModel } from '@idp/shared';
+import {
+  CompiledCode,
+  HttpMethod,
+  ModuleEntity,
+  OrmModel,
+  SourceCode,
+} from '@idp/shared';
 import { generateVersion } from '@/lib/version';
 import { compileOrmSource } from '@/lib/orm-compiler';
 import {
@@ -44,6 +50,7 @@ export const buildModuleModelTools = (ctx: AssistantToolContext) => {
       if (input.id) {
         mod = await repo.findOne({
           where: { id: input.id, tenant: { id: ctx.tenant.id } },
+          relations: ['sourceCode'],
         });
       } else if (input.routePath && input.method) {
         mod = await repo.findOne({
@@ -52,11 +59,13 @@ export const buildModuleModelTools = (ctx: AssistantToolContext) => {
             routePath: normalizeRoute(input.routePath),
             method: normalizeMethod(input.method),
           },
+          relations: ['sourceCode'],
         });
       } else if (input.routePath) {
         const routePath = normalizeRoute(input.routePath);
         const candidates = await repo.find({
           where: { tenant: { id: ctx.tenant.id }, routePath },
+          relations: ['sourceCode'],
           order: { method: 'ASC', createdAt: 'DESC' },
         });
         if (candidates.length > 0) {
@@ -86,6 +95,7 @@ export const buildModuleModelTools = (ctx: AssistantToolContext) => {
       assertToolPermission(ctx, 'ide.modules.write');
       await ensureCoreSchema();
       const repo = CoreDataSource.getRepository(ModuleEntity);
+      const sourceRepo = CoreDataSource.getRepository(SourceCode);
       const routePath = normalizeRoute(input.routePath);
       const method = normalizeMethod(input.method);
       const code = normalizeCode(input.code);
@@ -95,11 +105,13 @@ export const buildModuleModelTools = (ctx: AssistantToolContext) => {
         where: { tenant: { id: ctx.tenant.id }, routePath, method },
       });
       if (existing) throw new Error('Module already exists for route/method');
+      const sourceCode = sourceRepo.create({ code });
+      await sourceRepo.save(sourceCode);
       const mod = repo.create({
         tenant: ctx.tenant,
         routePath,
         method,
-        code,
+        sourceCode,
         fileExtension,
         draftVersion: generateVersion(),
       });
@@ -131,7 +143,7 @@ export const buildModuleModelTools = (ctx: AssistantToolContext) => {
             routePath: normalizeRoute(input.routePath),
             method: normalizeMethod(input.method),
           };
-      const mod = await repo.findOne({ where });
+      const mod = await repo.findOne({ where, relations: ['sourceCode'] });
       if (!mod) throw new Error('Module not found');
       const before = snapshotModule(mod);
       const nextRoute = input.routePath ? normalizeRoute(input.routePath) : mod.routePath;
@@ -151,9 +163,14 @@ export const buildModuleModelTools = (ctx: AssistantToolContext) => {
         }
       }
       await createModuleRevision(mod, ctx.tenant, ctx.userId, 'update');
+      if (nextCode !== mod.code) {
+        const sourceRepo = CoreDataSource.getRepository(SourceCode);
+        const sourceCode = sourceRepo.create({ code: nextCode });
+        await sourceRepo.save(sourceCode);
+        mod.sourceCode = sourceCode;
+      }
       mod.routePath = nextRoute;
       mod.method = nextMethod;
-      mod.code = nextCode;
       mod.fileExtension = nextExt;
       mod.draftVersion = generateVersion();
       await repo.save(mod);
@@ -206,6 +223,7 @@ export const buildModuleModelTools = (ctx: AssistantToolContext) => {
       const repo = CoreDataSource.getRepository(OrmModel);
       const models = await repo.find({
         where: { tenant: { id: ctx.tenant.id } },
+        relations: ['sourceCode', 'compiledCode'],
         order: { path: 'ASC' },
       });
       return models.map(snapshotModel);
@@ -226,7 +244,7 @@ export const buildModuleModelTools = (ctx: AssistantToolContext) => {
       const where = input.id
         ? { id: input.id, tenant: { id: ctx.tenant.id } }
         : { tenant: { id: ctx.tenant.id }, path: normalizeModelPath(input.path) };
-      const model = await repo.findOne({ where });
+      const model = await repo.findOne({ where, relations: ['sourceCode', 'compiledCode'] });
       if (!model) throw new Error('Model not found');
       return snapshotModel(model);
     },
@@ -244,6 +262,8 @@ export const buildModuleModelTools = (ctx: AssistantToolContext) => {
       assertToolPermission(ctx, 'ide.models.write');
       await ensureCoreSchema();
       const repo = CoreDataSource.getRepository(OrmModel);
+      const sourceRepo = CoreDataSource.getRepository(SourceCode);
+      const compiledRepo = CoreDataSource.getRepository(CompiledCode);
       const path = normalizeModelPath(input.path);
       const code = normalizeCode(input.code);
       assertOrmModelDecoratorNotation(code);
@@ -253,11 +273,15 @@ export const buildModuleModelTools = (ctx: AssistantToolContext) => {
       });
       if (existing) throw new Error('Model already exists at this path');
       const compiled = compileOrmSource(code, fileExtension);
+      const sourceCode = sourceRepo.create({ code });
+      const compiledCode = compiledRepo.create({ code: compiled });
+      await sourceRepo.save(sourceCode);
+      await compiledRepo.save(compiledCode);
       const model = repo.create({
         tenant: ctx.tenant,
         path,
-        code,
-        codeBlob: compiled,
+        sourceCode,
+        compiledCode,
         fileExtension,
         draftVersion: generateVersion(),
       });
@@ -284,7 +308,7 @@ export const buildModuleModelTools = (ctx: AssistantToolContext) => {
       const where = input.id
         ? { id: input.id, tenant: { id: ctx.tenant.id } }
         : { tenant: { id: ctx.tenant.id }, path: normalizeModelPath(input.path) };
-      const model = await repo.findOne({ where });
+      const model = await repo.findOne({ where, relations: ['sourceCode', 'compiledCode'] });
       if (!model) throw new Error('Model not found');
       const before = snapshotModel(model);
       const nextPath = input.newPath ? normalizeModelPath(input.newPath) : model.path;
@@ -303,9 +327,19 @@ export const buildModuleModelTools = (ctx: AssistantToolContext) => {
           ? normalizeModelExtension(input.fileExtension)
           : model.fileExtension;
       const compiled = compileOrmSource(nextCode, nextExt);
+      if (nextCode !== model.code) {
+        const sourceRepo = CoreDataSource.getRepository(SourceCode);
+        const sourceCode = sourceRepo.create({ code: nextCode });
+        await sourceRepo.save(sourceCode);
+        model.sourceCode = sourceCode;
+      }
+      if (compiled !== model.codeBlob) {
+        const compiledRepo = CoreDataSource.getRepository(CompiledCode);
+        const compiledCode = compiledRepo.create({ code: compiled });
+        await compiledRepo.save(compiledCode);
+        model.compiledCode = compiledCode;
+      }
       model.path = nextPath;
-      model.code = nextCode;
-      model.codeBlob = compiled;
       model.fileExtension = nextExt;
       model.draftVersion = generateVersion();
       await repo.save(model);

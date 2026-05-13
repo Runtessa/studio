@@ -75,6 +75,7 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
   const repo = CoreDataSource.getRepository(UIPackage);
   const pkg = await repo.findOne({
     where: { id: req.query.id as string, tenant: { id: tenant.id } },
+    relations: ['sourceCode', 'compiledCode', 'publishedSourceCode', 'publishedCompiledCode'],
   });
   if (!pkg) {
     res.status(404).json({ error: 'UI entity not found' });
@@ -86,6 +87,7 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
   const revRepo = CoreDataSource.getRepository(UIPackageRevision);
   const revision = await revRepo.findOne({
     where: { id: req.query.revisionId as string, uiPackage: { id: pkg.id } },
+    relations: ['sourceCode', 'compiledCode'],
   });
   if (!revision) {
     res.status(404).json({ error: 'Revision not found' });

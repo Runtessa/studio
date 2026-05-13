@@ -48,7 +48,7 @@ export const snapshotModule = (mod: ModuleEntity): ModuleSnapshot => ({
   id: mod.id,
   routePath: mod.routePath,
   method: mod.method,
-  code: mod.code ?? '',
+  code: mod.sourceCode?.code ?? '',
   fileExtension: mod.fileExtension ?? undefined,
 });
 
@@ -56,8 +56,8 @@ export const snapshotUi = (pkg: UIPackage): UiSnapshot => ({
   id: pkg.id,
   name: pkg.name,
   version: pkg.version,
-  code: pkg.code ?? '',
-  codeBlob: pkg.codeBlob ?? '',
+  code: pkg.sourceCode?.code ?? '',
+  codeBlob: pkg.compiledCode?.code ?? '',
   dependencies: pkg.dependencies ?? [],
   fileExtension: pkg.fileExtension ?? undefined,
 });
@@ -65,7 +65,7 @@ export const snapshotUi = (pkg: UIPackage): UiSnapshot => ({
 export const snapshotModel = (model: OrmModel): OrmModelSnapshot => ({
   id: model.id,
   path: model.path ?? '',
-  code: model.code ?? '',
+  code: model.sourceCode?.code ?? '',
   fileExtension: model.fileExtension ?? undefined,
   draftVersion: model.draftVersion ?? undefined,
 });
@@ -80,8 +80,8 @@ export const snapshotSharedProject = (
     name: pkg.name,
     version: pkg.version,
     entryPath: pkg.entryPath ?? (kind === 'ui' ? 'src/index.jsx' : 'src/index.js'),
-    code: pkg.code ?? '',
-    codeBlob: pkg.codeBlob ?? '',
+    code: pkg.sourceCode?.code ?? '',
+    codeBlob: pkg.compiledCode?.code ?? '',
     dependencies: pkg.dependencies ?? [],
     fileExtension: pkg.fileExtension ?? undefined,
     ownerTeamId: access.ownerTeamId ?? undefined,
@@ -122,13 +122,23 @@ export const createModuleRevision = async (
     where: { module: { id: mod.id } },
     order: { revision: 'DESC' },
   });
+
+  // Ensure relations are loaded
+  if (!mod.sourceCode) {
+    const reloaded = await CoreDataSource.getRepository(ModuleEntity).findOne({
+      where: { id: mod.id },
+      relations: ['sourceCode'],
+    });
+    if (reloaded) mod = reloaded;
+  }
+
   const revision = revRepo.create({
     module: mod,
     tenant: tenant as any,
     revision: (last?.revision ?? 0) + 1,
     routePath: mod.routePath,
     method: mod.method,
-    code: mod.code,
+    sourceCode: mod.sourceCode,
     fileExtension: mod.fileExtension,
     action,
     createdBy: null,
@@ -148,14 +158,24 @@ export const createUiRevision = async (
     where: { uiPackage: { id: pkg.id } },
     order: { revision: 'DESC' },
   });
+
+  // Ensure relations are loaded
+  if (!pkg.sourceCode || !pkg.compiledCode) {
+    const reloaded = await CoreDataSource.getRepository(UIPackage).findOne({
+      where: { id: pkg.id },
+      relations: ['sourceCode', 'compiledCode'],
+    });
+    if (reloaded) pkg = reloaded;
+  }
+
   const revision = revRepo.create({
     uiPackage: pkg,
     tenant: tenant as any,
     revision: (last?.revision ?? 0) + 1,
     name: pkg.name,
     version: pkg.version,
-    code: pkg.code,
-    codeBlob: pkg.codeBlob,
+    sourceCode: pkg.sourceCode,
+    compiledCode: pkg.compiledCode,
     dependencies: pkg.dependencies ?? [],
     fileExtension: pkg.fileExtension,
     action,
@@ -176,21 +196,30 @@ export const listWorkspace = async (
   const sharedModuleFileRepo = CoreDataSource.getRepository(GlobalModulePackageFile);
   const modules = await moduleRepo.find({
     where: { tenant: { id: tenant.id } },
+    relations: ['sourceCode'],
     order: { routePath: 'ASC', method: 'ASC' },
   });
   const uiPackages = await uiRepo.find({
     where: { tenant: { id: tenant.id } },
+    relations: ['sourceCode', 'compiledCode'],
     order: { name: 'ASC', version: 'DESC' },
   });
   const models = await modelRepo.find({
     where: { tenant: { id: tenant.id } },
+    relations: ['sourceCode', 'compiledCode'],
     order: { path: 'ASC' },
   });
   const sharedUi = visibility.includeSharedUi
-    ? await CoreDataSource.getRepository(GlobalUIPackage).find({ order: { name: 'ASC' } })
+    ? await CoreDataSource.getRepository(GlobalUIPackage).find({
+        relations: ['sourceCode', 'compiledCode'],
+        order: { name: 'ASC' },
+      })
     : [];
   const sharedModules = visibility.includeSharedModules
-    ? await CoreDataSource.getRepository(GlobalModulePackage).find({ order: { name: 'ASC' } })
+    ? await CoreDataSource.getRepository(GlobalModulePackage).find({
+        relations: ['sourceCode', 'compiledCode'],
+        order: { name: 'ASC' },
+      })
     : [];
   const sharedUiFiles = visibility.includeSharedUi
     ? await sharedUiFileRepo.find({

@@ -9,6 +9,8 @@ import {
   GlobalModulePackage,
   GlobalModulePackageFile,
   OrmModel,
+  SourceCode,
+  CompiledCode,
 } from '@idp/shared';
 import { generateVersion } from '@/lib/version';
 import { compileOrmSource } from '@/lib/orm-compiler';
@@ -64,8 +66,14 @@ const updateSharedBundle = async (
       fileExtension: file.fileExtension ?? undefined,
     }))
   );
-  project.code = entrySource;
-  project.codeBlob = bundle;
+  const sourceRepo = CoreDataSource.getRepository(SourceCode);
+  const compiledRepo = CoreDataSource.getRepository(CompiledCode);
+  const sourceCode = sourceRepo.create({ code: entrySource });
+  const compiledCode = compiledRepo.create({ code: bundle });
+  await sourceRepo.save(sourceCode);
+  await compiledRepo.save(compiledCode);
+  project.sourceCode = sourceCode;
+  project.compiledCode = compiledCode;
   project.draftVersion = generateVersion();
   return project;
 };
@@ -117,6 +125,8 @@ export const rollbackChanges = async (
   const sharedUiFileRepo = CoreDataSource.getRepository(GlobalUIPackageFile);
   const sharedModuleRepo = CoreDataSource.getRepository(GlobalModulePackage);
   const sharedModuleFileRepo = CoreDataSource.getRepository(GlobalModulePackageFile);
+  const sourceRepo = CoreDataSource.getRepository(SourceCode);
+  const compiledRepo = CoreDataSource.getRepository(CompiledCode);
   let uiTouched = false;
   const sharedTouched = new Map<string, 'ui' | 'module'>();
 
@@ -126,19 +136,27 @@ export const rollbackChanges = async (
         const mod = await moduleRepo.findOne({ where: { id: change.after.id } });
         if (mod) await moduleRepo.remove(mod);
       } else if (change.action === 'delete' && change.before) {
+        const sourceCode = sourceRepo.create({ code: change.before.code ?? '' });
+        await sourceRepo.save(sourceCode);
         const mod = moduleRepo.create({
           ...(change.before as any),
+          sourceCode,
           tenant: ctx.tenant,
           draftVersion: generateVersion(),
         } as any) as unknown as ModuleEntity;
         await moduleRepo.save(mod);
         await ensureAclEndpoint(ctx.tenant, mod.routePath);
       } else if (change.action === 'update' && change.before) {
-        const mod = await moduleRepo.findOne({ where: { id: change.before.id } });
+        const mod = await moduleRepo.findOne({
+          where: { id: change.before.id },
+          relations: ['sourceCode'],
+        });
         if (mod) {
+          const sourceCode = sourceRepo.create({ code: change.before.code ?? '' });
+          await sourceRepo.save(sourceCode);
           mod.routePath = change.before.routePath;
           mod.method = change.before.method as HttpMethod;
-          mod.code = change.before.code;
+          mod.sourceCode = sourceCode;
           mod.fileExtension = change.before.fileExtension ?? mod.fileExtension;
           mod.draftVersion = generateVersion();
           await moduleRepo.save(mod);
@@ -153,20 +171,33 @@ export const rollbackChanges = async (
         const pkg = await uiRepo.findOne({ where: { id: change.after.id } });
         if (pkg) await uiRepo.remove(pkg);
       } else if (change.action === 'delete' && change.before) {
+        const sourceCode = sourceRepo.create({ code: change.before.code ?? '' });
+        const compiledCode = compiledRepo.create({ code: change.before.codeBlob ?? '' });
+        await sourceRepo.save(sourceCode);
+        await compiledRepo.save(compiledCode);
         const pkg = uiRepo.create({
           ...(change.before as any),
+          sourceCode,
+          compiledCode,
           tenant: ctx.tenant,
           draftVersion: generateVersion(),
         } as any) as unknown as UIPackage;
         await uiRepo.save(pkg);
         await clearRegistryCache(ctx.tenant.id, pkg.name, pkg.version);
       } else if (change.action === 'update' && change.before) {
-        const pkg = await uiRepo.findOne({ where: { id: change.before.id } });
+        const pkg = await uiRepo.findOne({
+          where: { id: change.before.id },
+          relations: ['sourceCode', 'compiledCode'],
+        });
         if (pkg) {
+          const sourceCode = sourceRepo.create({ code: change.before.code ?? '' });
+          const compiledCode = compiledRepo.create({ code: change.before.codeBlob ?? '' });
+          await sourceRepo.save(sourceCode);
+          await compiledRepo.save(compiledCode);
           pkg.name = change.before.name;
           pkg.version = change.before.version;
-          pkg.code = change.before.code;
-          pkg.codeBlob = change.before.codeBlob;
+          pkg.sourceCode = sourceCode;
+          pkg.compiledCode = compiledCode;
           pkg.dependencies = change.before.dependencies;
           pkg.fileExtension = change.before.fileExtension ?? pkg.fileExtension;
           pkg.draftVersion = generateVersion();
@@ -183,21 +214,37 @@ export const rollbackChanges = async (
       } else if (change.action === 'delete' && change.before) {
         const code = change.before.code ?? '';
         const fileExtension = change.before.fileExtension ?? 'js';
+        const sourceCode = sourceRepo.create({ code });
+        const compiledCode = compiledRepo.create({
+          code: compileOrmSource(code, fileExtension),
+        });
+        await sourceRepo.save(sourceCode);
+        await compiledRepo.save(compiledCode);
         const restored = modelRepo.create({
           ...(change.before as any),
           tenant: ctx.tenant,
-          codeBlob: compileOrmSource(code, fileExtension),
+          sourceCode,
+          compiledCode,
           draftVersion: generateVersion(),
         } as any) as unknown as OrmModel;
         await modelRepo.save(restored);
       } else if (change.action === 'update' && change.before) {
-        const model = await modelRepo.findOne({ where: { id: change.before.id } });
+        const model = await modelRepo.findOne({
+          where: { id: change.before.id },
+          relations: ['sourceCode', 'compiledCode'],
+        });
         if (model) {
           const code = change.before.code ?? '';
           const fileExtension = change.before.fileExtension ?? 'js';
+          const sourceCode = sourceRepo.create({ code });
+          const compiledCode = compiledRepo.create({
+            code: compileOrmSource(code, fileExtension),
+          });
+          await sourceRepo.save(sourceCode);
+          await compiledRepo.save(compiledCode);
           model.path = change.before.path;
-          model.code = code;
-          model.codeBlob = compileOrmSource(code, fileExtension);
+          model.sourceCode = sourceCode;
+          model.compiledCode = compiledCode;
           model.fileExtension = fileExtension;
           model.draftVersion = generateVersion();
           await modelRepo.save(model);
@@ -262,13 +309,18 @@ export const rollbackChanges = async (
       } else if (change.action === 'update' && change.before) {
         const project = await projectRepo.findOne({
           where: { id: change.before.id },
+          relations: ['sourceCode', 'compiledCode'],
         });
         if (project) {
+          const sourceCode = sourceRepo.create({ code: change.before.code ?? '' });
+          const compiledCode = compiledRepo.create({ code: change.before.codeBlob ?? '' });
+          await sourceRepo.save(sourceCode);
+          await compiledRepo.save(compiledCode);
           (project as any).name = change.before.name;
           (project as any).version = change.before.version;
           (project as any).entryPath = change.before.entryPath;
-          (project as any).code = change.before.code;
-          (project as any).codeBlob = change.before.codeBlob;
+          (project as any).sourceCode = sourceCode;
+          (project as any).compiledCode = compiledCode;
           (project as any).dependencies = change.before.dependencies;
           (project as any).fileExtension =
             change.before.fileExtension ?? (project as any).fileExtension;

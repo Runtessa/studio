@@ -2,8 +2,10 @@ import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import { CoreDataSource, ensureCoreSchema } from '@/lib/core-db';
 import {
+  CompiledCode,
   HttpMethod,
   ModuleEntity,
+  SourceCode,
   Tenant,
   UIPackage,
   GlobalUIPackage,
@@ -125,6 +127,7 @@ export const buildAssistantTools = (ctx: AssistantToolContext) => {
       const repo = CoreDataSource.getRepository(UIPackage);
       const packages = await repo.find({
         where: { tenant: { id: ctx.tenant.id } },
+        relations: ['sourceCode', 'compiledCode'],
         order: { name: 'ASC', version: 'DESC' },
       });
       return packages.map(snapshotUi).filter((pkg) => !isTailwindPackageName(pkg.name));
@@ -147,6 +150,7 @@ export const buildAssistantTools = (ctx: AssistantToolContext) => {
       if (input.id) {
         pkg = await repo.findOne({
           where: { id: input.id, tenant: { id: ctx.tenant.id } },
+          relations: ['sourceCode', 'compiledCode'],
         });
       } else if (input.name && input.version) {
         pkg = await repo.findOne({
@@ -155,6 +159,7 @@ export const buildAssistantTools = (ctx: AssistantToolContext) => {
             name: normalizeUiName(input.name),
             version: normalizeUiVersion(input.version),
           },
+          relations: ['sourceCode', 'compiledCode'],
         });
       } else if (input.name) {
         // Version-less read should return the latest package for the requested name.
@@ -163,6 +168,7 @@ export const buildAssistantTools = (ctx: AssistantToolContext) => {
             tenant: { id: ctx.tenant.id },
             name: normalizeUiName(input.name),
           },
+          relations: ['sourceCode', 'compiledCode'],
           order: { createdAt: 'DESC' },
         });
       } else {
@@ -187,6 +193,8 @@ export const buildAssistantTools = (ctx: AssistantToolContext) => {
       assertToolPermission(ctx, 'ide.ui.write');
       await ensureCoreSchema();
       const repo = CoreDataSource.getRepository(UIPackage);
+      const sourceRepo = CoreDataSource.getRepository(SourceCode);
+      const compiledRepo = CoreDataSource.getRepository(CompiledCode);
       const name = normalizeUiName(input.name);
       const version = normalizeUiVersion(input.version);
       const code = normalizeCode(input.code);
@@ -209,12 +217,16 @@ export const buildAssistantTools = (ctx: AssistantToolContext) => {
         ? ensureTailwindDependency(depsRaw, tailwindName)
         : stripTailwindDependency(depsRaw, tailwindName);
       const compiled = compileUiSource(code, fileExtension);
+      const sourceCode = sourceRepo.create({ code });
+      const compiledCode = compiledRepo.create({ code: compiled });
+      await sourceRepo.save(sourceCode);
+      await compiledRepo.save(compiledCode);
       const pkg = repo.create({
         tenant: ctx.tenant,
         name,
         version,
-        code,
-        codeBlob: compiled,
+        sourceCode,
+        compiledCode,
         dependencies: deps,
         fileExtension,
         draftVersion: generateVersion(),
@@ -253,7 +265,7 @@ export const buildAssistantTools = (ctx: AssistantToolContext) => {
             name: normalizeUiName(input.name),
             version: normalizeUiVersion(input.version),
           };
-      const pkg = await repo.findOne({ where });
+      const pkg = await repo.findOne({ where, relations: ['sourceCode', 'compiledCode'] });
       if (!pkg) throw new Error('UI package not found');
       const targetName = input.name ? normalizeUiName(input.name) : pkg.name;
       if (targetName !== DASHBOARD_UI_NAME) {
@@ -296,7 +308,7 @@ export const buildAssistantTools = (ctx: AssistantToolContext) => {
             name: normalizeUiName(input.name),
             version: normalizeUiVersion(input.version),
           };
-      const pkg = await repo.findOne({ where });
+      const pkg = await repo.findOne({ where, relations: ['sourceCode', 'compiledCode'] });
       if (!pkg) throw new Error('UI package not found');
       if (pkg.name === DASHBOARD_UI_NAME) {
         throw new Error('Cannot delete "@app/dashboard". It is the required UI entrypoint.');

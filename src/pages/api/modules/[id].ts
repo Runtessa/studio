@@ -114,6 +114,7 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
   if (req.method === 'GET') {
     const mod = await repo.findOne({
       where: { id: req.query.id as string, tenant: { id: tenant.id } },
+      relations: ['sourceCode', 'publishedSourceCode'],
     });
     if (!mod) {
       res.status(404).json({ error: 'Module not found' });
@@ -126,6 +127,7 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
   if (req.method === 'PUT') {
     const mod = await repo.findOne({
       where: { id: req.query.id as string, tenant: { id: tenant.id } },
+      relations: ['sourceCode', 'publishedSourceCode'],
     });
     if (!mod) {
       res.status(404).json({ error: 'Module not found' });
@@ -167,6 +169,7 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
   if (req.method === 'DELETE') {
     const mod = await repo.findOne({
       where: { id: req.query.id as string, tenant: { id: tenant.id } },
+      relations: ['sourceCode', 'publishedSourceCode'],
     });
     if (!mod) {
       res.status(404).json({ error: 'Module not found' });

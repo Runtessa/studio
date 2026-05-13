@@ -1,6 +1,7 @@
 import { CoreDataSource } from '@/lib/core-db';
 import { GlobalUIPackage } from '@idp/shared';
 import { GlobalUIPackageFile } from '@idp/shared';
+import { SourceCode, CompiledCode } from '@idp/shared';
 import redis from '@/lib/redis';
 import { generateVersion } from '@/lib/version';
 import {
@@ -66,21 +67,30 @@ export const upsertGlobalTailwindPackage = async (
   css: string
 ) => {
   const repo = CoreDataSource.getRepository(GlobalUIPackage);
-  let pkg = await repo.findOne({ where: { name, version } });
+  const sourceRepo = CoreDataSource.getRepository(SourceCode);
+  const compiledRepo = CoreDataSource.getRepository(CompiledCode);
+  let pkg = await repo.findOne({
+    where: { name, version },
+    relations: ['sourceCode', 'compiledCode'],
+  });
+  const sourceCode = sourceRepo.create({ code: css });
+  const compiledCode = compiledRepo.create({ code: css });
+  await sourceRepo.save(sourceCode);
+  await compiledRepo.save(compiledCode);
   if (!pkg) {
     pkg = repo.create({
       name,
       version,
       entryPath: 'styles.css',
-      code: css,
-      codeBlob: css,
+      sourceCode,
+      compiledCode,
       dependencies: [],
       fileExtension: 'css',
       draftVersion: generateVersion(),
     });
   } else {
-    pkg.code = css;
-    pkg.codeBlob = css;
+    pkg.sourceCode = sourceCode;
+    pkg.compiledCode = compiledCode;
     pkg.dependencies = [];
     pkg.fileExtension = 'css';
     pkg.draftVersion = generateVersion();
@@ -100,11 +110,14 @@ export const removeGlobalTailwindPackage = async (name: string, version: string)
 
 export const publishGlobalTailwindPackage = async (name: string, version: string) => {
   const repo = CoreDataSource.getRepository(GlobalUIPackage);
-  const pkg = await repo.findOne({ where: { name, version } });
+  const pkg = await repo.findOne({
+    where: { name, version },
+    relations: ['sourceCode', 'compiledCode'],
+  });
   if (!pkg) return null;
   pkg.publishedVersion = generateVersion();
-  pkg.publishedCode = pkg.code;
-  pkg.publishedCodeBlob = pkg.codeBlob;
+  pkg.publishedSourceCode = pkg.sourceCode;
+  pkg.publishedCompiledCode = pkg.compiledCode;
   pkg.publishedDependencies = [];
   pkg.publishedFileExtension = pkg.fileExtension;
   pkg.publishedAt = new Date();

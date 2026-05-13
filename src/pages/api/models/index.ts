@@ -65,6 +65,7 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
     const repo = CoreDataSource.getRepository(OrmModel);
     const models = await repo.find({
       where: { tenant: { id: tenant.id } },
+      relations: ['sourceCode', 'compiledCode'],
       order: { path: 'ASC' },
     });
     res.status(200).json(models.map(serialize));

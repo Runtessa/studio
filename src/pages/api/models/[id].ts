@@ -63,7 +63,10 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
   const repo = CoreDataSource.getRepository(OrmModel);
   const id = String(req.query.id || '');
 
-  const model = await repo.findOne({ where: { id, tenant: { id: tenant.id } } });
+  const model = await repo.findOne({
+    where: { id, tenant: { id: tenant.id } },
+    relations: ['sourceCode', 'compiledCode'],
+  });
   if (!model) {
     res.status(404).json({ error: 'Model not found' });
     return;
