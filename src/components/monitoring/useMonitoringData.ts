@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/router';
 import { fetchJson } from '@/lib/client/api';
 import { useSessionToken } from '@/lib/client/session';
 import type { AlertEvent, Rule, RuleForm, SummaryResponse } from './types';
 import { defaultRuleForm } from './types';
 
 export function useMonitoringData() {
+  const router = useRouter();
   const { token, ready } = useSessionToken();
   const [windowMinutes, setWindowMinutes] = useState(60);
   const [summary, setSummary] = useState<SummaryResponse | null>(null);
@@ -19,16 +21,21 @@ export function useMonitoringData() {
   const [selectedInstanceKey, setSelectedInstanceKey] = useState('');
   const [selectedTenantKey, setSelectedTenantKey] = useState('');
 
+  const isAlertsPage = router.pathname === '/admin/monitoring/alerts';
+
   const loadSummary = useCallback(async () => {
     if (!token) return;
     setLoadingSummary(true);
     setError('');
     try {
-      const data = (await fetchJson(`/api/admin/monitoring/summary?minutes=${windowMinutes}`, {
+      const pointLimit = Math.min(Math.max(Math.ceil((windowMinutes * 60) / 8), 120), 360);
+      const data = (await fetchJson(
+        `/api/admin/monitoring/summary?minutes=${windowMinutes}&pointLimit=${pointLimit}&alertLimit=30`,
+        {
         token,
-      })) as SummaryResponse;
+      }
+      )) as SummaryResponse;
       setSummary(data);
-      setEvents(data.alerts?.recent || []);
     } catch (err: any) {
       setError(err.message || 'Failed to load monitoring summary');
     } finally {
@@ -67,8 +74,12 @@ export function useMonitoringData() {
   }, [token, windowMinutes]);
 
   const refreshAll = useCallback(async () => {
-    await Promise.all([loadSummary(), loadRules(), loadEvents()]);
-  }, [loadSummary, loadRules, loadEvents]);
+    if (isAlertsPage) {
+      await Promise.all([loadSummary(), loadRules(), loadEvents()]);
+      return;
+    }
+    await Promise.all([loadSummary(), loadRules()]);
+  }, [isAlertsPage, loadSummary, loadRules, loadEvents]);
 
   useEffect(() => {
     if (!ready || !token) return;
@@ -78,10 +89,14 @@ export function useMonitoringData() {
   useEffect(() => {
     if (!ready || !token) return;
     const timer = setInterval(() => {
-      void Promise.all([loadSummary(), loadEvents()]);
-    }, 4000);
+      if (isAlertsPage) {
+        void Promise.all([loadSummary(), loadEvents()]);
+        return;
+      }
+      void loadSummary();
+    }, 8000);
     return () => clearInterval(timer);
-  }, [ready, token, loadSummary, loadEvents]);
+  }, [ready, token, isAlertsPage, loadSummary, loadEvents]);
 
   const timelinePoints = useMemo(
     () =>
@@ -192,11 +207,11 @@ export function useMonitoringData() {
       }
 
       setForm(defaultRuleForm);
-      await Promise.all([loadRules(), loadSummary()]);
+      await Promise.all([loadRules(), loadSummary(), loadEvents()]);
     } catch (err: any) {
       setError(err.message || 'Failed to save rule');
     }
-  }, [token, form, loadRules, loadSummary]);
+  }, [token, form, loadRules, loadSummary, loadEvents]);
 
   const editRule = useCallback((rule: Rule) => {
     setForm({
@@ -228,12 +243,12 @@ export function useMonitoringData() {
         });
         setSuccess('Rule deleted');
         if (form.id === ruleId) setForm(defaultRuleForm);
-        await Promise.all([loadRules(), loadSummary()]);
+        await Promise.all([loadRules(), loadSummary(), loadEvents()]);
       } catch (err: any) {
         setError(err.message || 'Failed to delete rule');
       }
     },
-    [token, form.id, loadRules, loadSummary]
+    [token, form.id, loadRules, loadSummary, loadEvents]
   );
 
   return {

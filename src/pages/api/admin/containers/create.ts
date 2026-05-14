@@ -1,13 +1,18 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { withApiHandler } from '@/lib/api-helpers';
 import { requireAdmin } from '@/lib/auth';
-import { callContainerManager, hasContainerManager } from '@/lib/container-manager-client';
+import { createContainer, hasContainerOrchestrator } from '@/lib/container-orchestrator-client';
 
 type CreatePayload = {
   ok?: boolean;
   containerName?: string;
   created?: boolean;
   running?: boolean;
+};
+
+const resolveTargetAgent = (req: NextApiRequest) => {
+  const fromBody = String(req.body?.agentId || '').trim();
+  return fromBody || String(process.env.AGENT_CONTAINER_MANAGER_TARGET || '').trim() || undefined;
 };
 
 export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) => {
@@ -19,10 +24,10 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
 
   await requireAdmin(req);
 
-  if (!hasContainerManager()) {
+  if (!hasContainerOrchestrator()) {
     res.status(400).json({
       ok: false,
-      error: 'AGENT_CONTAINER_MANAGER_URL is not configured',
+      error: 'Container orchestrator is not configured',
     });
     return;
   }
@@ -54,10 +59,7 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
         : {},
   };
 
-  const result = await callContainerManager<CreatePayload>('/v1/containers/create', {
-    method: 'POST',
-    body: JSON.stringify(payload),
-  });
+  const result = (await createContainer(payload, resolveTargetAgent(req))) as CreatePayload;
 
   res.status(201).json({
     ok: true,

@@ -1,7 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { withApiHandler } from '@/lib/api-helpers';
 import { requireAdmin } from '@/lib/auth';
-import { callContainerManager, hasContainerManager } from '@/lib/container-manager-client';
+import { applyServiceAction, hasContainerOrchestrator } from '@/lib/container-orchestrator-client';
 
 const allowedActions = new Set(['create', 'start', 'stop', 'restart', 'remove']);
 
@@ -23,6 +23,19 @@ type ServiceActionPayload = {
   state?: ServiceActionState;
 };
 
+type ServiceActionInput = {
+  service: string;
+  action: string;
+  userId?: string;
+  userName?: string;
+  preferredPort?: number;
+};
+
+const resolveTargetAgent = (req: NextApiRequest) => {
+  const fromBody = String(req.body?.agentId || '').trim();
+  return fromBody || String(process.env.AGENT_CONTAINER_MANAGER_TARGET || '').trim() || undefined;
+};
+
 export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) => {
   if (req.method !== 'POST') {
     res.setHeader('Allow', ['POST']);
@@ -32,10 +45,10 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
 
   await requireAdmin(req);
 
-  if (!hasContainerManager()) {
+  if (!hasContainerOrchestrator()) {
     res.status(400).json({
       ok: false,
-      error: 'AGENT_CONTAINER_MANAGER_URL is not configured',
+      error: 'Container orchestrator is not configured',
     });
     return;
   }
@@ -57,7 +70,7 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
     return;
   }
 
-  const payload: Record<string, unknown> = { action };
+  const payload: ServiceActionInput = { service, action };
   if (req.body?.userId !== undefined && req.body?.userId !== null && req.body?.userId !== '') {
     payload.userId = String(req.body.userId);
   }
@@ -75,13 +88,10 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
     }
   }
 
-  const result = await callContainerManager<ServiceActionPayload>(
-    `/v1/services/${encodeURIComponent(service)}/action`,
-    {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    }
-  );
+  const result = (await applyServiceAction(
+    payload,
+    resolveTargetAgent(req)
+  )) as ServiceActionPayload;
 
   res.status(200).json({
     ok: true,

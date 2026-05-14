@@ -1,7 +1,7 @@
 import * as http from 'node:http';
 import * as https from 'node:https';
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { callContainerManager, hasContainerManager } from '@/lib/container-manager-client';
+import { getServiceState, hasContainerOrchestrator } from '@/lib/container-orchestrator-client';
 
 const isTruthy = (value: string) => {
   const normalized = String(value || '').trim().toLowerCase();
@@ -91,27 +91,29 @@ const queryToSearch = (query: NextApiRequest['query']) => {
 };
 
 const resolveMonitoringBaseUrl = async () => {
-  if (hasContainerManager()) {
-    const state = await callContainerManager<{
-      ok?: boolean;
-      state?: { running?: boolean; baseUrl?: string; containerName?: string };
-    }>('/v1/services/monitoring/state', { method: 'GET' });
-    const base = String(state?.state?.baseUrl || '').trim().replace(/\/+$/, '');
-    if (!base) {
-      throw new Error('container-manager did not return monitoring baseUrl');
+  if (hasContainerOrchestrator()) {
+    try {
+      const targetAgent = String(process.env.AGENT_CONTAINER_MANAGER_TARGET || '').trim() || undefined;
+      const state = (await getServiceState(
+        { service: 'monitoring' },
+        targetAgent
+      )) as {
+        ok?: boolean;
+        state?: { running?: boolean; baseUrl?: string; containerName?: string };
+      };
+      const base = String(state?.state?.baseUrl || '').trim().replace(/\/+$/, '');
+      if (base && state?.state?.running) {
+        return base;
+      }
+    } catch {
+      // fallback to direct monitoring URL when orchestration state is unavailable
     }
-    if (!state?.state?.running) {
-      throw new Error(
-        `monitoring container is not running (${String(state?.state?.containerName || 'unknown')})`
-      );
-    }
-    return base;
   }
 
   const base = resolveMonitoringBaseFromEnv();
   if (!base) {
     throw new Error(
-      'Monitoring server is not configured. Set MONITORING_SERVER_URL or configure AGENT_CONTAINER_MANAGER_URL.'
+      'Monitoring server is not configured. Set MONITORING_SERVER_URL or configure AGENT_CONTAINER_MANAGER_TARGET.'
     );
   }
   return base;

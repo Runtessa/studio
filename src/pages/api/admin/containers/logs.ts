@@ -1,7 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { withApiHandler } from '@/lib/api-helpers';
 import { requireAdmin } from '@/lib/auth';
-import { callContainerManager, hasContainerManager } from '@/lib/container-manager-client';
+import { getContainerLogs, hasContainerOrchestrator } from '@/lib/container-orchestrator-client';
 
 const firstString = (value: string | string[] | undefined) =>
   Array.isArray(value) ? String(value[0] || '') : String(value || '');
@@ -13,6 +13,11 @@ type LogsPayload = {
   logs?: string;
 };
 
+const resolveTargetAgent = (req: NextApiRequest) => {
+  const fromQuery = firstString(req.query.agentId).trim();
+  return fromQuery || String(process.env.AGENT_CONTAINER_MANAGER_TARGET || '').trim() || undefined;
+};
+
 export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) => {
   if (req.method !== 'GET') {
     res.setHeader('Allow', ['GET']);
@@ -22,10 +27,10 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
 
   await requireAdmin(req);
 
-  if (!hasContainerManager()) {
+  if (!hasContainerOrchestrator()) {
     res.status(400).json({
       ok: false,
-      error: 'AGENT_CONTAINER_MANAGER_URL is not configured',
+      error: 'Container orchestrator is not configured',
     });
     return;
   }
@@ -40,13 +45,14 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
   const tail = Number.isFinite(tailRaw) ? Math.min(Math.max(Math.floor(tailRaw), 1), 5000) : 200;
   const sinceRaw = Number(firstString(req.query.since || '0'));
   const since = Number.isFinite(sinceRaw) ? Math.max(Math.floor(sinceRaw), 0) : 0;
-  const qs = new URLSearchParams({ tail: String(tail) });
-  if (since > 0) qs.set('since', String(since));
-
-  const data = await callContainerManager<LogsPayload>(
-    `/v1/containers/${encodeURIComponent(containerName)}/logs?${qs.toString()}`,
-    { method: 'GET' }
-  );
+  const data = (await getContainerLogs(
+    {
+      containerName,
+      tail,
+      ...(since > 0 ? { since } : {}),
+    },
+    resolveTargetAgent(req)
+  )) as LogsPayload;
 
   res.status(200).json({
     ok: true,

@@ -89,6 +89,9 @@ const resolveRoutePermission = (req: NextApiRequest): IdePermission | null => {
   if (pathname.startsWith('/api/admin/containers')) {
     return isWriteMethod ? 'ide.containers.manage' : 'ide.containers.read';
   }
+  if (pathname.startsWith('/api/admin/orchestration')) {
+    return isWriteMethod ? 'ide.containers.manage' : 'ide.containers.read';
+  }
   if (pathname.startsWith('/api/admin/logs')) {
     return 'ide.logs.read';
   }

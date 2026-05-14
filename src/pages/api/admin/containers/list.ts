@@ -1,7 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { withApiHandler } from '@/lib/api-helpers';
 import { requireAdmin } from '@/lib/auth';
-import { callContainerManager, hasContainerManager } from '@/lib/container-manager-client';
+import { hasContainerOrchestrator, listContainers } from '@/lib/container-orchestrator-client';
 
 const firstString = (value: string | string[] | undefined) =>
   Array.isArray(value) ? String(value[0] || '') : String(value || '');
@@ -18,6 +18,11 @@ type ListPayload = {
   containers?: Array<Record<string, unknown>>;
 };
 
+const resolveTargetAgent = (req: NextApiRequest) => {
+  const fromQuery = firstString(req.query.agentId).trim();
+  return fromQuery || String(process.env.AGENT_CONTAINER_MANAGER_TARGET || '').trim() || undefined;
+};
+
 export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) => {
   if (req.method !== 'GET') {
     res.setHeader('Allow', ['GET']);
@@ -27,10 +32,10 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
 
   await requireAdmin(req);
 
-  if (!hasContainerManager()) {
+  if (!hasContainerOrchestrator()) {
     res.status(400).json({
       ok: false,
-      error: 'AGENT_CONTAINER_MANAGER_URL is not configured',
+      error: 'Container orchestrator is not configured',
     });
     return;
   }
@@ -38,13 +43,14 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
   const managedOnly = isTruthy(firstString(req.query.managedOnly || 'true'));
   const service = firstString(req.query.service || '').trim();
   const search = firstString(req.query.search || '').trim();
-  const qs = new URLSearchParams({ managedOnly: String(managedOnly) });
-  if (service) qs.set('service', service);
-  if (search) qs.set('search', search);
-
-  const data = await callContainerManager<ListPayload>(`/v1/containers/list?${qs.toString()}`, {
-    method: 'GET',
-  });
+  const data = (await listContainers(
+    {
+      managedOnly,
+      ...(service ? { service } : {}),
+      ...(search ? { search } : {}),
+    },
+    resolveTargetAgent(req)
+  )) as ListPayload;
 
   res.status(200).json({
     ok: true,

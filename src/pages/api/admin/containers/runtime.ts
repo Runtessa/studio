@@ -2,10 +2,12 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import { withApiHandler } from '@/lib/api-helpers';
 import { requireAdmin } from '@/lib/auth';
 import {
-  callContainerManager,
+  getServiceState,
   getContainerManagerVersion,
-  hasContainerManager,
-} from '@/lib/container-manager-client';
+  hasContainerOrchestrator,
+  listContainers,
+  listServices,
+} from '@/lib/container-orchestrator-client';
 
 type ServiceRecord = {
   key: string;
@@ -52,6 +54,11 @@ type ContainersPayload = {
 const firstString = (value: string | string[] | undefined) =>
   Array.isArray(value) ? String(value[0] || '') : String(value || '');
 
+const resolveTargetAgent = (req: NextApiRequest) => {
+  const fromQuery = firstString(req.query.agentId).trim();
+  return fromQuery || String(process.env.AGENT_CONTAINER_MANAGER_TARGET || '').trim() || undefined;
+};
+
 export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) => {
   if (req.method !== 'GET') {
     res.setHeader('Allow', ['GET']);
@@ -61,7 +68,7 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
 
   const user = await requireAdmin(req);
 
-  if (!hasContainerManager()) {
+  if (!hasContainerOrchestrator()) {
     res.status(200).json({
       ok: true,
       configured: false,
@@ -78,27 +85,33 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
 
   const selectedUserId = firstString(req.query.userId) || String(user.id);
   const selectedUserName = firstString(req.query.userName) || user.email;
+  const targetAgent = resolveTargetAgent(req);
 
   const [managerVersion, servicesPayload, containersPayload] = await Promise.all([
-    getContainerManagerVersion().catch((error: any) => ({
+    getContainerManagerVersion(targetAgent).catch((error: any) => ({
       ok: false,
       error: String(error?.message || error || 'failed'),
     })),
-    callContainerManager<ServicesPayload>('/v1/services', { method: 'GET' }),
-    callContainerManager<ContainersPayload>('/v1/containers/list', { method: 'GET' }),
+    listServices(targetAgent) as Promise<ServicesPayload>,
+    listContainers({}, targetAgent) as Promise<ContainersPayload>,
   ]);
 
   const services = Array.isArray(servicesPayload?.services) ? servicesPayload.services : [];
   const states = await Promise.all(
     services.map(async (service) => {
       try {
-        const query = service.userScoped
-          ? `?userId=${encodeURIComponent(selectedUserId)}&userName=${encodeURIComponent(selectedUserName)}`
-          : '';
-        const payload = await callContainerManager<ServiceStatePayload>(
-          `/v1/services/${encodeURIComponent(service.key)}/state${query}`,
-          { method: 'GET' }
-        );
+        const payload = (await getServiceState(
+          {
+            service: service.key,
+            ...(service.userScoped
+              ? {
+                  userId: selectedUserId,
+                  userName: selectedUserName,
+                }
+              : {}),
+          },
+          targetAgent
+        )) as ServiceStatePayload;
         return {
           service: service.key,
           userScoped: Boolean(service.userScoped),

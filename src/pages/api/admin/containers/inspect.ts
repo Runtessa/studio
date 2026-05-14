@@ -1,7 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { withApiHandler } from '@/lib/api-helpers';
 import { requireAdmin } from '@/lib/auth';
-import { callContainerManager, hasContainerManager } from '@/lib/container-manager-client';
+import { hasContainerOrchestrator, inspectContainer } from '@/lib/container-orchestrator-client';
 
 const firstString = (value: string | string[] | undefined) =>
   Array.isArray(value) ? String(value[0] || '') : String(value || '');
@@ -10,6 +10,11 @@ type InspectPayload = {
   ok?: boolean;
   containerName?: string;
   inspect?: Record<string, unknown>;
+};
+
+const resolveTargetAgent = (req: NextApiRequest) => {
+  const fromQuery = firstString(req.query.agentId).trim();
+  return fromQuery || String(process.env.AGENT_CONTAINER_MANAGER_TARGET || '').trim() || undefined;
 };
 
 export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) => {
@@ -21,10 +26,10 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
 
   await requireAdmin(req);
 
-  if (!hasContainerManager()) {
+  if (!hasContainerOrchestrator()) {
     res.status(400).json({
       ok: false,
-      error: 'AGENT_CONTAINER_MANAGER_URL is not configured',
+      error: 'Container orchestrator is not configured',
     });
     return;
   }
@@ -35,10 +40,10 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
     return;
   }
 
-  const data = await callContainerManager<InspectPayload>(
-    `/v1/containers/${encodeURIComponent(containerName)}/inspect`,
-    { method: 'GET' }
-  );
+  const data = (await inspectContainer(
+    { containerName },
+    resolveTargetAgent(req)
+  )) as InspectPayload;
 
   res.status(200).json({
     ok: true,

@@ -15,6 +15,10 @@ import { GlobalUIPackageFile } from '@idp/shared';
 import { OrmModel } from '@idp/shared';
 import { PublishRequest } from '@idp/shared';
 import { User } from '@idp/shared';
+import { OrchestrationAgent } from '@idp/shared';
+import { OrchestrationWorkload } from '@idp/shared';
+import { OrchestrationPlacement } from '@idp/shared';
+import { OrchestrationOperation } from '@idp/shared';
 
 const dbType = (process.env.CORE_DB_TYPE ||
   process.env.DB_TYPE ||
@@ -62,6 +66,10 @@ const baseOptions = {
     CompiledCode,
     OrmModel,
     PublishRequest,
+    OrchestrationAgent,
+    OrchestrationWorkload,
+    OrchestrationPlacement,
+    OrchestrationOperation,
   ],
 } as DataSourceOptions;
 
@@ -126,6 +134,10 @@ export const ensureCoreSchema = async () => {
         const hasAccountGroups =
           hasAccountsTable && (await queryRunner.hasColumn('accounts', 'groups'));
         const hasPublishRequests = await queryRunner.hasTable('publish_requests');
+        const hasOrchestrationAgents = await queryRunner.hasTable('orchestration_agents');
+        const hasOrchestrationWorkloads = await queryRunner.hasTable('orchestration_workloads');
+        const hasOrchestrationPlacements = await queryRunner.hasTable('orchestration_placements');
+        const hasOrchestrationOperations = await queryRunner.hasTable('orchestration_operations');
         if (
           !hasGlobalTable ||
           !hasFileTable ||
@@ -150,7 +162,11 @@ export const ensureCoreSchema = async () => {
           !hasSourceCodesTable ||
           !hasCompiledCodesTable ||
           !hasAccountGroups ||
-          !hasPublishRequests
+          !hasPublishRequests ||
+          !hasOrchestrationAgents ||
+          !hasOrchestrationWorkloads ||
+          !hasOrchestrationPlacements ||
+          !hasOrchestrationOperations
         ) {
           await CoreDataSource.synchronize();
         }

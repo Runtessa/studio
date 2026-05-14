@@ -74,6 +74,9 @@ export default function ContainerOverviewPage() {
       onRefresh={() => void load()}
       actions={
         <div className="flex items-center gap-2">
+          <Button href="/admin/containers/fleet" variant="secondary" size="sm">
+            Open Fleet
+          </Button>
           <Button href="/admin/containers/services" variant="secondary" size="sm">
             Open Services
           </Button>
@@ -104,7 +107,7 @@ export default function ContainerOverviewPage() {
       {runtime && runtime.configured === false ? (
         <DataCard
           title="Container manager not configured"
-          subtitle="Set AGENT_CONTAINER_MANAGER_URL and AGENT_CONTAINER_MANAGER_TOKEN in IDE env."
+          subtitle="Set AGENT_CONTAINER_MANAGER_TARGET in IDE env."
         >
           <p className="text-sm text-textMuted">
             This section depends on container-manager and does not access Docker/Podman sockets directly.

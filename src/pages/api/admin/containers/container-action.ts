@@ -1,7 +1,10 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { withApiHandler } from '@/lib/api-helpers';
 import { requireAdmin } from '@/lib/auth';
-import { callContainerManager, hasContainerManager } from '@/lib/container-manager-client';
+import {
+  applyContainerAction,
+  hasContainerOrchestrator,
+} from '@/lib/container-orchestrator-client';
 
 const allowedActions = new Set(['start', 'stop', 'restart', 'remove']);
 
@@ -15,6 +18,11 @@ type ContainerActionPayload = {
   existed?: boolean;
 };
 
+const resolveTargetAgent = (req: NextApiRequest) => {
+  const fromBody = String(req.body?.agentId || '').trim();
+  return fromBody || String(process.env.AGENT_CONTAINER_MANAGER_TARGET || '').trim() || undefined;
+};
+
 export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) => {
   if (req.method !== 'POST') {
     res.setHeader('Allow', ['POST']);
@@ -24,10 +32,10 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
 
   await requireAdmin(req);
 
-  if (!hasContainerManager()) {
+  if (!hasContainerOrchestrator()) {
     res.status(400).json({
       ok: false,
-      error: 'AGENT_CONTAINER_MANAGER_URL is not configured',
+      error: 'Container orchestrator is not configured',
     });
     return;
   }
@@ -49,10 +57,10 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
     return;
   }
 
-  const result = await callContainerManager<ContainerActionPayload>('/v1/containers/action', {
-    method: 'POST',
-    body: JSON.stringify({ containerName, action }),
-  });
+  const result = (await applyContainerAction(
+    { containerName, action },
+    resolveTargetAgent(req)
+  )) as ContainerActionPayload;
 
   res.status(200).json({
     ok: true,

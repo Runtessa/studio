@@ -124,7 +124,7 @@ export default function MonitoringServicePage() {
       {runtime?.configured === false ? (
         <DataCard
           title="Container manager not configured"
-          subtitle="Set AGENT_CONTAINER_MANAGER_URL and AGENT_CONTAINER_MANAGER_TOKEN in IDE env."
+          subtitle="Set AGENT_CONTAINER_MANAGER_TARGET in IDE env."
         />
       ) : null}
 
