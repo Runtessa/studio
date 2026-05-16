@@ -40,11 +40,13 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
         relations: ['sourceCode', 'publishedSourceCode'],
       });
       if (mod) {
+        const publishedSourceCode = mod.publishedSourceCode as any;
         items.push({
           kind: 'module',
           id: mod.id,
           title: `${mod.method} ${mod.routePath}`,
-          originalCode: mod.publishedCode || null,
+          originalCode: mod.publishedCode ?? '',
+          originalSourceCodeId: publishedSourceCode?.id ?? null,
           data: {
             code: mod.code,
             routePath: mod.routePath,
@@ -65,11 +67,13 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
         ],
       });
       if (pkg) {
+        const publishedSourceCode = pkg.publishedSourceCode as any;
         items.push({
           kind: 'ui',
           id: pkg.id,
           title: pkg.name,
-          originalCode: pkg.publishedCode || null,
+          originalCode: pkg.publishedCode ?? '',
+          originalSourceCodeId: publishedSourceCode?.id ?? null,
           originalCodeBlob: pkg.publishedCodeBlob || null,
           data: {
             code: pkg.code,
@@ -93,12 +97,14 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
         ],
       });
       if (backendPkg) {
+        const publishedSourceCode = backendPkg.publishedSourceCode as any;
         items.push({
           kind: 'shared',
           sharedType: 'backend',
           id: backendPkg.id,
           title: backendPkg.name,
-          originalCode: backendPkg.publishedCode || null,
+          originalCode: backendPkg.publishedCode ?? '',
+          originalSourceCodeId: publishedSourceCode?.id ?? null,
           originalCodeBlob: backendPkg.publishedCodeBlob || null,
           data: {
             code: backendPkg.code,
@@ -123,12 +129,14 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
         ],
       });
       if (uiPkg) {
+        const publishedSourceCode = uiPkg.publishedSourceCode as any;
         items.push({
           kind: 'shared',
           sharedType: 'ui',
           id: uiPkg.id,
           title: uiPkg.name,
-          originalCode: uiPkg.publishedCode || null,
+          originalCode: uiPkg.publishedCode ?? '',
+          originalSourceCodeId: publishedSourceCode?.id ?? null,
           originalCodeBlob: uiPkg.publishedCodeBlob || null,
           data: {
             code: uiPkg.code,

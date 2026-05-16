@@ -4,12 +4,8 @@ import { requireAdmin } from '@/lib/auth';
 import { CoreDataSource, ensureCoreSchema } from '@/lib/core-db';
 import {
   PublishRequest,
-  ModuleEntity,
-  UIPackage,
-  GlobalModulePackage,
-  GlobalUIPackage,
-  ModuleRevision,
-  UIPackageRevision,
+  PublishRequestStatus,
+  SourceCode,
 } from '@idp/shared';
 
 type PublishRequestItem = {
@@ -24,13 +20,12 @@ type PublishRequestItem = {
     [key: string]: unknown;
   };
   originalCode?: string | null;
+  originalSourceCodeId?: string | null;
   resolvedOriginalCode?: string;
   resolvedModifiedCode?: string;
 };
 
 const asString = (value: unknown): string | null => (typeof value === 'string' ? value : null);
-const hasSource = (value: unknown): value is string =>
-  typeof value === 'string' && value.trim().length > 0;
 
 const normalizeForDiff = (value: string): string => {
   let normalized = value.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
@@ -49,124 +44,67 @@ const getRequestedCode = (item: PublishRequestItem): string => {
   return '';
 };
 
-const useIfPrevious = (candidate: string, requestedCode: string): string => {
-  const normalized = normalizeForDiff(candidate);
-  return hasSource(normalized) && normalized !== requestedCode ? normalized : '';
+const isSamePublishedItem = (candidate: PublishRequestItem, item: PublishRequestItem): boolean =>
+  candidate.kind === item.kind &&
+  candidate.id === item.id &&
+  (candidate.kind !== 'shared' ||
+    !item.sharedType ||
+    !candidate.sharedType ||
+    candidate.sharedType === item.sharedType);
+
+const getSnapshotOriginalCode = async (item: PublishRequestItem): Promise<string | null> => {
+  const snapshotOriginal = asString(item.originalCode);
+  if (snapshotOriginal !== null) return normalizeForDiff(snapshotOriginal);
+
+  if (item.originalSourceCodeId) {
+    const source = await CoreDataSource.getRepository(SourceCode).findOne({
+      where: { id: item.originalSourceCodeId },
+    });
+    if (source) return normalizeForDiff(source.code);
+  }
+
+  return null;
 };
 
-const getLatestModuleRevisionSource = async (
+const getHistoricalPublishedCode = async (
   item: PublishRequestItem,
   tenantId: string,
-  requestedCode: string
+  requestCreatedAt: Date
 ): Promise<string> => {
-  const revisions = await CoreDataSource.getRepository(ModuleRevision).find({
-    where: { module: { id: item.id }, tenant: { id: tenantId } },
-    relations: ['sourceCode'],
-    order: { revision: 'DESC', createdAt: 'DESC' },
-    take: 10,
-  });
-  const revision = revisions.find((candidate) => {
-    const code = normalizeForDiff(candidate.code);
-    return hasSource(code) && code !== requestedCode;
-  });
-  return revision ? normalizeForDiff(revision.code) : '';
-};
+  const previousRequests = await CoreDataSource.getRepository(PublishRequest)
+    .createQueryBuilder('pr')
+    .leftJoin('pr.tenant', 'tenant')
+    .where('tenant.id = :tenantId', { tenantId })
+    .andWhere('pr.status = :status', { status: PublishRequestStatus.APPROVED })
+    .andWhere(
+      '((pr.published_at IS NOT NULL AND pr.published_at < :requestCreatedAt) OR (pr.published_at IS NULL AND pr.created_at < :requestCreatedAt))',
+      { requestCreatedAt }
+    )
+    .orderBy('COALESCE(pr.published_at, pr.created_at)', 'DESC')
+    .take(100)
+    .getMany();
 
-const getLatestUiRevisionSource = async (
-  item: PublishRequestItem,
-  tenantId: string,
-  requestedCode: string
-): Promise<string> => {
-  const revisions = await CoreDataSource.getRepository(UIPackageRevision).find({
-    where: { uiPackage: { id: item.id }, tenant: { id: tenantId } },
-    relations: ['sourceCode'],
-    order: { revision: 'DESC', createdAt: 'DESC' },
-    take: 10,
-  });
-  const revision = revisions.find((candidate) => {
-    const code = normalizeForDiff(candidate.code);
-    return hasSource(code) && code !== requestedCode;
-  });
-  return revision ? normalizeForDiff(revision.code) : '';
+  for (const previousRequest of previousRequests) {
+    const previousItems = Array.isArray(previousRequest.items) ? previousRequest.items : [];
+    const previousItem = previousItems.find((candidate) =>
+      isSamePublishedItem(candidate as PublishRequestItem, item)
+    ) as PublishRequestItem | undefined;
+    const previousCode = asString(previousItem?.data?.code);
+    if (previousCode !== null) return normalizeForDiff(previousCode);
+  }
+
+  return '';
 };
 
 const getPublishedSourceCode = async (
   item: PublishRequestItem,
   tenantId: string,
-  requestedCode: string
+  requestCreatedAt: Date
 ): Promise<string> => {
-  const snapshotOriginal = asString(item.originalCode);
-  const normalizedSnapshotOriginal = snapshotOriginal ? normalizeForDiff(snapshotOriginal) : '';
+  const snapshotOriginal = await getSnapshotOriginalCode(item);
+  if (snapshotOriginal !== null) return snapshotOriginal;
 
-  if (item.kind === 'module') {
-    const mod = await CoreDataSource.getRepository(ModuleEntity).findOne({
-      where: { id: item.id, tenant: { id: tenantId } },
-      relations: ['sourceCode', 'publishedSourceCode'],
-    });
-    const published = useIfPrevious(mod?.publishedCode ?? '', requestedCode);
-    if (published) return published;
-    const snapshot = useIfPrevious(normalizedSnapshotOriginal, requestedCode);
-    if (snapshot) return snapshot;
-    const revision = await getLatestModuleRevisionSource(item, tenantId, requestedCode);
-    if (hasSource(revision)) return revision;
-    return '';
-  }
-
-  if (item.kind === 'ui') {
-    const pkg = await CoreDataSource.getRepository(UIPackage).findOne({
-      where: { id: item.id, tenant: { id: tenantId } },
-      relations: ['sourceCode', 'publishedSourceCode'],
-    });
-    const published = useIfPrevious(pkg?.publishedCode ?? '', requestedCode);
-    if (published) return published;
-    const snapshot = useIfPrevious(normalizedSnapshotOriginal, requestedCode);
-    if (snapshot) return snapshot;
-    const revision = await getLatestUiRevisionSource(item, tenantId, requestedCode);
-    if (hasSource(revision)) return revision;
-    return '';
-  }
-
-  if (item.sharedType === 'backend') {
-    const pkg = await CoreDataSource.getRepository(GlobalModulePackage).findOne({
-      where: { id: item.id },
-      relations: ['sourceCode', 'publishedSourceCode'],
-    });
-    const published = useIfPrevious(pkg?.publishedCode ?? '', requestedCode);
-    if (published) return published;
-    const snapshot = useIfPrevious(normalizedSnapshotOriginal, requestedCode);
-    if (snapshot) return snapshot;
-    return '';
-  }
-
-  if (item.sharedType === 'ui') {
-    const pkg = await CoreDataSource.getRepository(GlobalUIPackage).findOne({
-      where: { id: item.id },
-      relations: ['sourceCode', 'publishedSourceCode'],
-    });
-    const published = useIfPrevious(pkg?.publishedCode ?? '', requestedCode);
-    if (published) return published;
-    const snapshot = useIfPrevious(normalizedSnapshotOriginal, requestedCode);
-    if (snapshot) return snapshot;
-    return '';
-  }
-
-  // Backward-compatible fallback for old shared snapshots without sharedType
-  const backendPkg = await CoreDataSource.getRepository(GlobalModulePackage).findOne({
-    where: { id: item.id },
-    relations: ['sourceCode', 'publishedSourceCode'],
-  });
-  const backendPublished = useIfPrevious(backendPkg?.publishedCode ?? '', requestedCode);
-  if (backendPublished) return backendPublished;
-  const snapshot = useIfPrevious(normalizedSnapshotOriginal, requestedCode);
-  if (snapshot) return snapshot;
-
-  const uiPkg = await CoreDataSource.getRepository(GlobalUIPackage).findOne({
-    where: { id: item.id },
-    relations: ['sourceCode', 'publishedSourceCode'],
-  });
-  const uiPublished = useIfPrevious(uiPkg?.publishedCode ?? '', requestedCode);
-  if (uiPublished) return uiPublished;
-  return snapshot;
+  return getHistoricalPublishedCode(item, tenantId, requestCreatedAt);
 };
 
 export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) => {
@@ -197,7 +135,7 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
     items.map(async (rawItem: any) => {
       const item = rawItem as PublishRequestItem;
       const requestedCode = getRequestedCode(item);
-      const publishedCode = await getPublishedSourceCode(item, request.tenant.id, requestedCode);
+      const publishedCode = await getPublishedSourceCode(item, request.tenant.id, request.createdAt);
 
       return {
         ...item,
