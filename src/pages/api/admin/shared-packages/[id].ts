@@ -122,7 +122,10 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
     await ensureCoreSchema();
 
     const repo = CoreDataSource.getRepository(GlobalUIPackage);
-    const pkg = await repo.findOne({ where: { id: req.query.id as string } });
+    const pkg = await repo.findOne({
+      where: { id: req.query.id as string },
+      relations: ['sourceCode', 'compiledCode', 'publishedSourceCode', 'publishedCompiledCode'],
+    });
     if (!pkg) {
       res.status(404).json({ error: 'Shared package not found' });
       return;
@@ -137,7 +140,10 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
 
     const repo = CoreDataSource.getRepository(GlobalUIPackage);
     const fileRepo = CoreDataSource.getRepository(GlobalUIPackageFile);
-    const pkg = await repo.findOne({ where: { id: req.query.id as string } });
+    const pkg = await repo.findOne({
+      where: { id: req.query.id as string },
+      relations: ['sourceCode', 'compiledCode', 'publishedSourceCode', 'publishedCompiledCode'],
+    });
     if (!pkg) {
       res.status(404).json({ error: 'Shared package not found' });
       return;
@@ -226,7 +232,10 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
     await ensureCoreSchema();
 
     const repo = CoreDataSource.getRepository(GlobalUIPackage);
-    const pkg = await repo.findOne({ where: { id: req.query.id as string } });
+    const pkg = await repo.findOne({
+      where: { id: req.query.id as string },
+      relations: ['sourceCode', 'compiledCode', 'publishedSourceCode', 'publishedCompiledCode'],
+    });
     if (!pkg) {
       res.status(404).json({ error: 'Shared package not found' });
       return;

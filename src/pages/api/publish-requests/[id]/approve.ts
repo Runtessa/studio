@@ -2,7 +2,16 @@ import { NextApiRequest, NextApiResponse } from 'next';
 import { withApiHandler } from '@/lib/api-helpers';
 import { requireAdmin } from '@/lib/auth';
 import { CoreDataSource, ensureCoreSchema } from '@/lib/core-db';
-import { PublishRequest, PublishRequestStatus, ModuleEntity, UIPackage, GlobalModulePackage, HttpMethod } from '@idp/shared';
+import {
+  PublishRequest,
+  PublishRequestStatus,
+  ModuleEntity,
+  UIPackage,
+  GlobalModulePackage,
+  GlobalUIPackage,
+  HttpMethod,
+  SourceCode,
+} from '@idp/shared';
 import { resolveTenant } from '@/lib/tenancy';
 import { generateVersion } from '@/lib/version';
 import redis from '@/lib/redis';
@@ -41,17 +50,20 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
 
   // Perform actual publishing for each item
   for (const item of request.items) {
+    const sourceRepo = CoreDataSource.getRepository(SourceCode);
     if (item.kind === 'module') {
       const modRepo = CoreDataSource.getRepository(ModuleEntity);
       const mod = await modRepo.findOne({ where: { id: item.id, tenant: { id: tenant.id } } });
       if (mod) {
         const previousMethod = (mod.publishedMethod ?? mod.method) as HttpMethod;
         const nextMethod = item.data.method;
+        const publishedSource = sourceRepo.create({ code: item.data.code ?? '' });
+        await sourceRepo.save(publishedSource);
 
         mod.publishedVersion = generateVersion();
         mod.publishedRoutePath = item.data.routePath;
         mod.publishedMethod = item.data.method;
-        mod.publishedCode = item.data.code;
+        mod.publishedSourceCode = publishedSource;
         mod.publishedFileExtension = item.data.fileExtension;
         mod.publishedAt = new Date();
         await modRepo.save(mod);
@@ -67,8 +79,11 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
       const uiRepo = CoreDataSource.getRepository(UIPackage);
       const pkg = await uiRepo.findOne({ where: { id: item.id, tenant: { id: tenant.id } } });
       if (pkg) {
+        const publishedSource = sourceRepo.create({ code: item.data.code ?? '' });
+        await sourceRepo.save(publishedSource);
+
         pkg.publishedVersion = generateVersion();
-        pkg.publishedCode = item.data.code;
+        pkg.publishedSourceCode = publishedSource;
         pkg.publishedCodeBlob = item.data.codeBlob;
         pkg.publishedDependencies = item.data.dependencies ?? [];
         pkg.publishedFileExtension = item.data.fileExtension;
@@ -76,16 +91,37 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
         await uiRepo.save(pkg);
       }
     } else if (item.kind === 'shared') {
-      const sharedRepo = CoreDataSource.getRepository(GlobalModulePackage);
-      const pkg = await sharedRepo.findOne({ where: { id: item.id } });
-      if (pkg) {
-        pkg.publishedVersion = generateVersion();
-        pkg.publishedCode = item.data.code;
-        pkg.publishedCodeBlob = item.data.codeBlob;
-        pkg.publishedDependencies = item.data.dependencies ?? [];
-        pkg.publishedFileExtension = item.data.fileExtension;
-        pkg.publishedAt = new Date();
-        await sharedRepo.save(pkg);
+      const sharedType = (item as any).sharedType === 'ui' ? 'ui' : 'backend';
+      if (sharedType === 'backend') {
+        const sharedRepo = CoreDataSource.getRepository(GlobalModulePackage);
+        const pkg = await sharedRepo.findOne({ where: { id: item.id } });
+        if (pkg) {
+          const publishedSource = sourceRepo.create({ code: item.data.code ?? '' });
+          await sourceRepo.save(publishedSource);
+
+          pkg.publishedVersion = generateVersion();
+          pkg.publishedSourceCode = publishedSource;
+          pkg.publishedCodeBlob = item.data.codeBlob;
+          pkg.publishedDependencies = item.data.dependencies ?? [];
+          pkg.publishedFileExtension = item.data.fileExtension;
+          pkg.publishedAt = new Date();
+          await sharedRepo.save(pkg);
+        }
+      } else {
+        const sharedUiRepo = CoreDataSource.getRepository(GlobalUIPackage);
+        const pkg = await sharedUiRepo.findOne({ where: { id: item.id } });
+        if (pkg) {
+          const publishedSource = sourceRepo.create({ code: item.data.code ?? '' });
+          await sourceRepo.save(publishedSource);
+
+          pkg.publishedVersion = generateVersion();
+          pkg.publishedSourceCode = publishedSource;
+          pkg.publishedCodeBlob = item.data.codeBlob;
+          pkg.publishedDependencies = item.data.dependencies ?? [];
+          pkg.publishedFileExtension = item.data.fileExtension;
+          pkg.publishedAt = new Date();
+          await sharedUiRepo.save(pkg);
+        }
       }
     }
   }

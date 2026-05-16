@@ -2,7 +2,7 @@ import { NextApiRequest, NextApiResponse } from 'next';
 import { withApiHandler } from '@/lib/api-helpers';
 import { requireUser } from '@/lib/auth';
 import { CoreDataSource } from '@/lib/core-db';
-import { HttpMethod, ModuleEntity } from '@idp/shared';
+import { HttpMethod, ModuleEntity, SourceCode } from '@idp/shared';
 import { resolveTenant } from '@/lib/tenancy';
 import redis from '@/lib/redis';
 import { generateVersion } from '@/lib/version';
@@ -41,11 +41,14 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
 
   const previousMethod = (mod.publishedMethod ?? mod.method) as HttpMethod;
   const nextMethod = mod.method;
+  const sourceRepo = CoreDataSource.getRepository(SourceCode);
+  const publishedSource = sourceRepo.create({ code: mod.code });
+  await sourceRepo.save(publishedSource);
 
   mod.publishedVersion = generateVersion();
   mod.publishedRoutePath = mod.routePath;
   mod.publishedMethod = mod.method;
-  mod.publishedCode = mod.code;
+  mod.publishedSourceCode = publishedSource;
   mod.publishedFileExtension = mod.fileExtension;
   mod.publishedAt = new Date();
   await repo.save(mod);

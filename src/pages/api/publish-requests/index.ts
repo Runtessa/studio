@@ -2,7 +2,14 @@ import { NextApiRequest, NextApiResponse } from 'next';
 import { withApiHandler } from '@/lib/api-helpers';
 import { requireUser } from '@/lib/auth';
 import { CoreDataSource, ensureCoreSchema } from '@/lib/core-db';
-import { PublishRequest, PublishRequestStatus, ModuleEntity, UIPackage, GlobalModulePackage } from '@idp/shared';
+import {
+  PublishRequest,
+  PublishRequestStatus,
+  ModuleEntity,
+  UIPackage,
+  GlobalModulePackage,
+  GlobalUIPackage,
+} from '@idp/shared';
 import { resolveTenant } from '@/lib/tenancy';
 
 export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) => {
@@ -29,7 +36,8 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
     if (itemId.startsWith('module-')) {
       const id = itemId.replace('module-', '');
       const mod = await CoreDataSource.getRepository(ModuleEntity).findOne({
-        where: { id, tenant: { id: tenant.id } }
+        where: { id, tenant: { id: tenant.id } },
+        relations: ['sourceCode', 'publishedSourceCode'],
       });
       if (mod) {
         items.push({
@@ -48,7 +56,13 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
     } else if (itemId.startsWith('ui-')) {
       const id = itemId.replace('ui-', '');
       const pkg = await CoreDataSource.getRepository(UIPackage).findOne({
-        where: { id, tenant: { id: tenant.id } }
+        where: { id, tenant: { id: tenant.id } },
+        relations: [
+          'sourceCode',
+          'compiledCode',
+          'publishedSourceCode',
+          'publishedCompiledCode',
+        ],
       });
       if (pkg) {
         items.push({
@@ -56,6 +70,7 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
           id: pkg.id,
           title: pkg.name,
           originalCode: pkg.publishedCode || null,
+          originalCodeBlob: pkg.publishedCodeBlob || null,
           data: {
             code: pkg.code,
             codeBlob: pkg.codeBlob,
@@ -68,24 +83,61 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
       }
     } else if (itemId.startsWith('shared-project-')) {
       const id = itemId.replace('shared-project-', '');
-      const pkg = await CoreDataSource.getRepository(GlobalModulePackage).findOne({
-        where: { id }
+      const backendPkg = await CoreDataSource.getRepository(GlobalModulePackage).findOne({
+        where: { id },
+        relations: [
+          'sourceCode',
+          'compiledCode',
+          'publishedSourceCode',
+          'publishedCompiledCode',
+        ],
       });
-      if (pkg) {
-        // Shared projects are a bit different, but let's snapshot for now
+      if (backendPkg) {
         items.push({
           kind: 'shared',
-          id: pkg.id,
-          title: pkg.name,
-          originalCode: pkg.publishedCode || null,
+          sharedType: 'backend',
+          id: backendPkg.id,
+          title: backendPkg.name,
+          originalCode: backendPkg.publishedCode || null,
+          originalCodeBlob: backendPkg.publishedCodeBlob || null,
           data: {
-            code: pkg.code,
-            codeBlob: pkg.codeBlob,
-            name: pkg.name,
-            version: pkg.version,
-            dependencies: pkg.dependencies,
-            fileExtension: pkg.fileExtension,
-            entryPath: pkg.entryPath,
+            code: backendPkg.code,
+            codeBlob: backendPkg.codeBlob,
+            name: backendPkg.name,
+            version: backendPkg.version,
+            dependencies: backendPkg.dependencies,
+            fileExtension: backendPkg.fileExtension,
+            entryPath: backendPkg.entryPath,
+          }
+        });
+        continue;
+      }
+
+      const uiPkg = await CoreDataSource.getRepository(GlobalUIPackage).findOne({
+        where: { id },
+        relations: [
+          'sourceCode',
+          'compiledCode',
+          'publishedSourceCode',
+          'publishedCompiledCode',
+        ],
+      });
+      if (uiPkg) {
+        items.push({
+          kind: 'shared',
+          sharedType: 'ui',
+          id: uiPkg.id,
+          title: uiPkg.name,
+          originalCode: uiPkg.publishedCode || null,
+          originalCodeBlob: uiPkg.publishedCodeBlob || null,
+          data: {
+            code: uiPkg.code,
+            codeBlob: uiPkg.codeBlob,
+            name: uiPkg.name,
+            version: uiPkg.version,
+            dependencies: uiPkg.dependencies,
+            fileExtension: uiPkg.fileExtension,
+            entryPath: uiPkg.entryPath,
           }
         });
       }

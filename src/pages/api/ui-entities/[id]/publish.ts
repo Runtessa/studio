@@ -2,7 +2,7 @@ import { NextApiRequest, NextApiResponse } from 'next';
 import { withApiHandler } from '@/lib/api-helpers';
 import { requireUser } from '@/lib/auth';
 import { CoreDataSource } from '@/lib/core-db';
-import { UIPackage } from '@idp/shared';
+import { SourceCode, UIPackage } from '@idp/shared';
 import { resolveTenant } from '@/lib/tenancy';
 import redis from '@/lib/redis';
 import { generateVersion } from '@/lib/version';
@@ -47,8 +47,12 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
     return;
   }
 
+  const sourceRepo = CoreDataSource.getRepository(SourceCode);
+  const publishedSource = sourceRepo.create({ code: pkg.code });
+  await sourceRepo.save(publishedSource);
+
   pkg.publishedVersion = generateVersion();
-  pkg.publishedCode = pkg.code;
+  pkg.publishedSourceCode = publishedSource;
   pkg.publishedCodeBlob = pkg.codeBlob;
   pkg.publishedDependencies = pkg.dependencies ?? [];
   pkg.publishedFileExtension = pkg.fileExtension;

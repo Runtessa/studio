@@ -110,7 +110,10 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
     await ensureCoreSchema();
 
     const repo = CoreDataSource.getRepository(GlobalModulePackage);
-    const pkg = await repo.findOne({ where: { id: req.query.id as string } });
+    const pkg = await repo.findOne({
+      where: { id: req.query.id as string },
+      relations: ['sourceCode', 'compiledCode', 'publishedSourceCode', 'publishedCompiledCode'],
+    });
     if (!pkg) {
       res.status(404).json({ error: 'Shared backend project not found' });
       return;
@@ -125,7 +128,10 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
     await ensureCoreSchema();
 
     const repo = CoreDataSource.getRepository(GlobalModulePackage);
-    const pkg = await repo.findOne({ where: { id: req.query.id as string } });
+    const pkg = await repo.findOne({
+      where: { id: req.query.id as string },
+      relations: ['sourceCode', 'compiledCode', 'publishedSourceCode', 'publishedCompiledCode'],
+    });
     if (!pkg) {
       res.status(404).json({ error: 'Shared backend project not found' });
       return;
@@ -186,7 +192,10 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
     await ensureCoreSchema();
 
     const repo = CoreDataSource.getRepository(GlobalModulePackage);
-    const pkg = await repo.findOne({ where: { id: req.query.id as string } });
+    const pkg = await repo.findOne({
+      where: { id: req.query.id as string },
+      relations: ['sourceCode', 'compiledCode', 'publishedSourceCode', 'publishedCompiledCode'],
+    });
     if (!pkg) {
       res.status(404).json({ error: 'Shared backend project not found' });
       return;

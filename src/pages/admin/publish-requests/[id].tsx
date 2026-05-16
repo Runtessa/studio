@@ -5,12 +5,10 @@ import { useApi } from "@/lib/api";
 import {
   FiCheck,
   FiX,
-  FiInfo,
   FiClock,
   FiUser,
   FiMessageSquare,
   FiArrowLeft,
-  FiCode,
 } from "react-icons/fi";
 import { Button } from "@/components/ui/Button";
 import { useSessionToken } from "@/lib/client/session";
@@ -19,9 +17,6 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { DataCard } from "@/components/ui/DataCard";
 import { useToast } from "@/components/ui/Toast";
 
-const MonacoEditor = dynamic(() => import("@monaco-editor/react"), {
-  ssr: false,
-});
 const MonacoDiffEditor = dynamic(
   () => import("@monaco-editor/react").then((mod) => mod.DiffEditor),
   { ssr: false },
@@ -73,6 +68,36 @@ export default function PublishRequestDetailPage() {
       return dateStr;
     }
   };
+
+  const resolveCodeLanguage = (item: any): string => {
+    const ext = String(item?.data?.fileExtension || "").toLowerCase();
+    if (ext === "ts" || ext === "tsx") return "typescript";
+    if (ext === "js" || ext === "jsx") return "javascript";
+    if (ext === "json") return "json";
+    if (ext === "css") return "css";
+    if (ext === "html") return "html";
+    return ext || "javascript";
+  };
+
+  const resolveModifiedCode = (item: any): string | null => {
+    if (typeof item?.resolvedModifiedCode === "string") return item.resolvedModifiedCode;
+    if (typeof item?.data?.code === "string") return item.data.code;
+    if (typeof item?.data?.codeBlob === "string") return item.data.codeBlob;
+    if (item?.data) return JSON.stringify(item.data, null, 2);
+    return null;
+  };
+
+  const resolveOriginalCode = (item: any): string => {
+    if (typeof item?.resolvedOriginalCode === "string") return item.resolvedOriginalCode;
+    if (typeof item?.originalCode === "string") return item.originalCode;
+    return "";
+  };
+
+  const normalizeLineEndings = (value: string): string =>
+    value.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+
+  const hasPreviousCode = (item: any): boolean =>
+    normalizeLineEndings(resolveOriginalCode(item)).trim().length > 0;
 
   const handleApprove = async () => {
     if (!confirm("Are you sure you want to approve and publish these changes?"))
@@ -274,58 +299,39 @@ export default function PublishRequestDetailPage() {
                     </span>
                   </div>
                   <div className="bg-bgSurface">
-                      {item.data?.code ? (
-                      <div className="h-80  overflow-hidden border border-borderSubtle bg-[#1e1e1e]">
-                        {item.originalCode !== null ? (
-                          <MonacoDiffEditor
-                            height="100%"
-                            language={
-                              item.data.fileExtension === "ts" ||
-                              item.data.fileExtension === "tsx"
-                                ? "typescript"
-                                : item.data.fileExtension === "js" ||
-                                    item.data.fileExtension === "jsx"
-                                  ? "javascript"
-                                  : item.data.fileExtension || "javascript"
-                            }
-                            theme="vs-dark"
-                            original={item.originalCode}
-                            modified={item.data.code}
-                            options={{
-                              readOnly: true,
-                              renderSideBySide: true,
-                              minimap: { enabled: false },
-                              fontSize: 11,
-                              scrollBeyondLastLine: false,
-                              wordWrap: "on",
-                              automaticLayout: true,
-                            }}
-                          />
-                        ) : (
-                          <MonacoEditor
-                            height="100%"
-                            language={
-                              item.data.fileExtension === "ts" ||
-                              item.data.fileExtension === "tsx"
-                                ? "typescript"
-                                : item.data.fileExtension === "js" ||
-                                    item.data.fileExtension === "jsx"
-                                  ? "javascript"
-                                  : item.data.fileExtension || "javascript"
-                            }
-                            theme="vs-dark"
-                            value={item.data.code}
-                            options={{
-                              readOnly: true,
-                              minimap: { enabled: false },
-                              fontSize: 12,
-                              scrollBeyondLastLine: false,
-                              wordWrap: "on",
-                              automaticLayout: true,
-                            }}
-                          />
-                        )}
-                      </div>
+                    {resolveModifiedCode(item) !== null ? (
+                      <>
+                        <div className="flex items-center border-b border-borderSubtle bg-bgApp px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-textMuted">
+                          <span>
+                            Code Diff
+                            {!hasPreviousCode(item) ? (
+                              <span className="ml-2 normal-case tracking-normal text-amber-600">
+                                No previous source found
+                              </span>
+                            ) : null}
+                          </span>
+                        </div>
+                        <div className="h-80 overflow-hidden border border-borderSubtle bg-[#1e1e1e]">
+                        <MonacoDiffEditor
+                          height="100%"
+                          language={resolveCodeLanguage(item)}
+                          theme="vs-dark"
+                          original={normalizeLineEndings(resolveOriginalCode(item))}
+                          modified={normalizeLineEndings(resolveModifiedCode(item) ?? "")}
+                          options={{
+                            readOnly: true,
+                            renderSideBySide: false,
+                            diffAlgorithm: "advanced",
+                            ignoreTrimWhitespace: false,
+                            minimap: { enabled: false },
+                            fontSize: 11,
+                            scrollBeyondLastLine: false,
+                            wordWrap: "on",
+                            automaticLayout: true,
+                          }}
+                        />
+                        </div>
+                      </>
                     ) : (
                       <pre className="text-[10px] bg-bgApp p-3 rounded overflow-x-auto text-textPrimary max-h-48">
                         {JSON.stringify(item.data, null, 2)}

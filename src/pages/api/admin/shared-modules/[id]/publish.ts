@@ -2,7 +2,7 @@ import { NextApiRequest, NextApiResponse } from 'next';
 import { withApiHandler } from '@/lib/api-helpers';
 import { requireAdmin } from '@/lib/auth';
 import { CoreDataSource, ensureCoreSchema } from '@/lib/core-db';
-import { GlobalModulePackage } from '@idp/shared';
+import { GlobalModulePackage, SourceCode } from '@idp/shared';
 import { generateVersion } from '@/lib/version';
 import {
   canEditSharedProject,
@@ -48,7 +48,10 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
   await ensureCoreSchema();
 
   const repo = CoreDataSource.getRepository(GlobalModulePackage);
-  const pkg = await repo.findOne({ where: { id: req.query.id as string } });
+  const pkg = await repo.findOne({
+    where: { id: req.query.id as string },
+    relations: ['sourceCode', 'compiledCode', 'publishedSourceCode', 'publishedCompiledCode'],
+  });
   if (!pkg) {
     res.status(404).json({ error: 'Shared backend project not found' });
     return;
@@ -59,8 +62,12 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
     await repo.save(pkg);
   }
 
+  const sourceRepo = CoreDataSource.getRepository(SourceCode);
+  const publishedSource = sourceRepo.create({ code: pkg.code });
+  await sourceRepo.save(publishedSource);
+
   pkg.publishedVersion = generateVersion();
-  pkg.publishedCode = pkg.code;
+  pkg.publishedSourceCode = publishedSource;
   pkg.publishedCodeBlob = pkg.codeBlob;
   pkg.publishedDependencies = pkg.dependencies ?? [];
   pkg.publishedFileExtension = pkg.fileExtension;
