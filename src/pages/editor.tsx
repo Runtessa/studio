@@ -950,6 +950,16 @@ export default function EditorPage() {
     []
   );
 
+  const bindSaveShortcut = useCallback((editor: monaco.editor.IStandaloneCodeEditor) => {
+    editor.onKeyDown((event) => {
+      if ((event.ctrlKey || event.metaKey) && event.code === 'KeyS') {
+        event.preventDefault();
+        event.stopPropagation();
+        handleSaveRef.current();
+      }
+    });
+  }, []);
+
   const handleEditorChange = (
     value?: string,
     event?: monaco.editor.IModelContentChangedEvent
@@ -1857,15 +1867,13 @@ export default function EditorPage() {
               diffModelPaths={diffModelPaths}
               onMainEditorChange={handleEditorChange}
               onSideEditorChange={handleSideEditorChange}
-              onMainEditorMount={(editor, monacoInstance) => {
+              onMainEditorMount={(editor) => {
                 mainEditorRef.current = editor;
-                const command = monacoInstance.KeyMod.CtrlCmd | monacoInstance.KeyCode.KeyS;
-                editor.addCommand(command, () => handleSaveRef.current());
+                bindSaveShortcut(editor);
               }}
-              onSideEditorMount={(editor, monacoInstance) => {
+              onSideEditorMount={(editor) => {
                 sideEditorRef.current = editor;
-                const command = monacoInstance.KeyMod.CtrlCmd | monacoInstance.KeyCode.KeyS;
-                editor.addCommand(command, () => handleSaveRef.current());
+                bindSaveShortcut(editor);
               }}
               onSplitResizeStart={handleSplitResizeStart}
               onEditorDragOver={handleEditorDragOver}
