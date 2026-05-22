@@ -12,9 +12,9 @@ import {
   HttpMethod,
   SourceCode,
 } from '@idp/shared';
-import { resolveTenant } from '@/lib/tenancy';
 import { generateVersion } from '@/lib/version';
 import redis from '@/lib/redis';
+import { ensureCoreUserIdentity } from '@/lib/core-users';
 
 export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) => {
   if (req.method !== 'POST') {
@@ -25,6 +25,12 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
 
   const user = await requireAdmin(req);
   await ensureCoreSchema();
+  const coreUser = await ensureCoreUserIdentity({
+    id: user.id,
+    email: user.email,
+    role: user.role,
+    token: user.token ?? null,
+  });
 
   const repo = CoreDataSource.getRepository(PublishRequest);
   const request = await repo.findOne({
@@ -127,7 +133,7 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
   }
 
   request.status = PublishRequestStatus.APPROVED;
-  request.approver = { id: user.id } as any;
+  request.approver = { id: coreUser.id } as any;
   request.publishedAt = new Date();
   await repo.save(request);
 

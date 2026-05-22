@@ -11,6 +11,7 @@ import {
   GlobalUIPackage,
 } from '@idp/shared';
 import { resolveTenant } from '@/lib/tenancy';
+import { ensureCoreUserIdentity } from '@/lib/core-users';
 
 export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) => {
   if (req.method !== 'POST') {
@@ -22,6 +23,12 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
   const user = await requireUser(req);
   const tenant = await resolveTenant(req);
   await ensureCoreSchema();
+  const coreUser = await ensureCoreUserIdentity({
+    id: user.id,
+    email: user.email,
+    role: user.role,
+    token: user.token ?? null,
+  });
 
   const { comment, itemIds } = req.body;
 
@@ -160,7 +167,7 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
   const repo = CoreDataSource.getRepository(PublishRequest);
   const request = repo.create({
     tenant: { id: tenant.id } as any,
-    requester: { id: user.id } as any,
+    requester: { id: coreUser.id } as any,
     comment,
     items,
     status: PublishRequestStatus.PENDING,

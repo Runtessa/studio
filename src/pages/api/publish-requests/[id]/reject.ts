@@ -3,7 +3,7 @@ import { withApiHandler } from '@/lib/api-helpers';
 import { requireAdmin } from '@/lib/auth';
 import { CoreDataSource, ensureCoreSchema } from '@/lib/core-db';
 import { PublishRequest, PublishRequestStatus } from '@idp/shared';
-import { resolveTenant } from '@/lib/tenancy';
+import { ensureCoreUserIdentity } from '@/lib/core-users';
 
 export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) => {
   if (req.method !== 'POST') {
@@ -14,6 +14,12 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
 
   const user = await requireAdmin(req);
   await ensureCoreSchema();
+  const coreUser = await ensureCoreUserIdentity({
+    id: user.id,
+    email: user.email,
+    role: user.role,
+    token: user.token ?? null,
+  });
 
   const repo = CoreDataSource.getRepository(PublishRequest);
   const request = await repo.findOne({
@@ -43,7 +49,7 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
   }
 
   request.status = PublishRequestStatus.REJECTED;
-  request.approver = { id: user.id } as any;
+  request.approver = { id: coreUser.id } as any;
   request.rejectionNote = note;
   await repo.save(request);
 
