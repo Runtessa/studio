@@ -15,6 +15,12 @@ import {
 import { generateVersion } from '@/lib/version';
 import redis from '@/lib/redis';
 import { ensureCoreUserIdentity } from '@/lib/core-users';
+import {
+  getTailwindPackageName,
+  isTailwindPackageName,
+} from '@/lib/tailwindBuilder';
+import { publishTailwindPackage } from '@/lib/ui-entity-tailwind';
+import { publishGlobalTailwindPackage } from '@/lib/shared-tailwind';
 
 export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) => {
   if (req.method !== 'POST') {
@@ -95,6 +101,15 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
         pkg.publishedFileExtension = item.data.fileExtension;
         pkg.publishedAt = new Date();
         await uiRepo.save(pkg);
+
+        if (!isTailwindPackageName(pkg.name)) {
+          await publishTailwindPackage(tenant.id, getTailwindPackageName(pkg.name), pkg.version);
+        }
+        const encoded = encodeURIComponent(pkg.name);
+        await redis.del(
+          `registry:tenant:${tenant.id}:${encoded}:latest`,
+          `registry:tenant:${tenant.id}:${encoded}:${pkg.version}`
+        );
       }
     } else if (item.kind === 'shared') {
       const sharedType = (item as any).sharedType === 'ui' ? 'ui' : 'backend';
@@ -112,6 +127,12 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
           pkg.publishedFileExtension = item.data.fileExtension;
           pkg.publishedAt = new Date();
           await sharedRepo.save(pkg);
+
+          const encoded = encodeURIComponent(pkg.name);
+          await redis.del(
+            `registry:global:${encoded}:latest`,
+            `registry:global:${encoded}:${pkg.version}`
+          );
         }
       } else {
         const sharedUiRepo = CoreDataSource.getRepository(GlobalUIPackage);
@@ -127,6 +148,18 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
           pkg.publishedFileExtension = item.data.fileExtension;
           pkg.publishedAt = new Date();
           await sharedUiRepo.save(pkg);
+
+          if (!isTailwindPackageName(pkg.name)) {
+            await publishGlobalTailwindPackage(
+              getTailwindPackageName(pkg.name),
+              pkg.version
+            );
+          }
+          const encoded = encodeURIComponent(pkg.name);
+          await redis.del(
+            `registry:global:${encoded}:latest`,
+            `registry:global:${encoded}:${pkg.version}`
+          );
         }
       }
     }

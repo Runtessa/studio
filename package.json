@@ -22,6 +22,7 @@
     "bcryptjs": "latest",
     "chart.js": "^4.5.1",
     "cssnano": "^7.1.2",
+    "esbuild": "^0.28.0",
     "ioredis": "^5.8.2",
     "monaco-editor": "latest",
     "mysql2": "^3.16.0",

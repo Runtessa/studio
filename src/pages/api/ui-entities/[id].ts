@@ -21,6 +21,7 @@ import {
   removeTailwindPackage,
   upsertTailwindPackage,
 } from '@/lib/ui-entity-tailwind';
+import { ensureTenantNpmBuilds } from '@/lib/tenant-npm-builds';
 
 const normalizeName = (raw: unknown): string => {
   if (typeof raw !== 'string' || !raw.trim()) {
@@ -173,6 +174,7 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
     const nextDeps = usesTailwind
       ? ensureTailwindDependency(depsSansTailwind, nextTailwindName)
       : depsSansTailwind;
+    await ensureTenantNpmBuilds(tenant, nextDeps);
     const tailwindConfig = usesTailwind
       ? await loadTailwindConfigForTenant(tenant.id)
       : null;

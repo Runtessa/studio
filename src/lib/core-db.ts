@@ -7,6 +7,7 @@ import { Tenant } from '@idp/shared';
 import { UIPackage } from '@idp/shared';
 import { ModuleRevision } from '@idp/shared';
 import { UIPackageRevision, SourceCode, CompiledCode } from '@idp/shared';
+import { TenantNpmPackageBuild } from '@idp/shared';
 import { GlobalModuleEndpoint } from '@idp/shared';
 import { GlobalModulePackage } from '@idp/shared';
 import { GlobalModulePackageFile } from '@idp/shared';
@@ -64,6 +65,7 @@ const baseOptions = {
     UIPackageRevision,
     SourceCode,
     CompiledCode,
+    TenantNpmPackageBuild,
     OrmModel,
     PublishRequest,
     OrchestrationAgent,
@@ -130,6 +132,7 @@ export const ensureCoreSchema = async () => {
           hasModulesTable && (await queryRunner.hasColumn('modules', 'source_code_id'));
         const hasSourceCodesTable = await queryRunner.hasTable('source_codes');
         const hasCompiledCodesTable = await queryRunner.hasTable('compiled_codes');
+        const hasTenantNpmPackageBuilds = await queryRunner.hasTable('tenant_npm_package_builds');
         const hasAccountsTable = await queryRunner.hasTable('accounts');
         const hasAccountGroups =
           hasAccountsTable && (await queryRunner.hasColumn('accounts', 'groups'));
@@ -161,6 +164,7 @@ export const ensureCoreSchema = async () => {
           !hasModuleSourceCodeId ||
           !hasSourceCodesTable ||
           !hasCompiledCodesTable ||
+          !hasTenantNpmPackageBuilds ||
           !hasAccountGroups ||
           !hasPublishRequests ||
           !hasOrchestrationAgents ||
