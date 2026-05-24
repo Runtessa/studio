@@ -5,8 +5,11 @@ type EditorHeaderProps = {
   branding: { logo_lm: string; brand_name: string };
   editorView: 'code' | 'preview';
   previewPort: string;
+  previewUrl: string;
   defaultPreviewPort: string;
   onPreviewPortChange: (value: string) => void;
+  onPreviewUrlChange: (value: string) => void;
+  onResetPreviewUrl: () => void;
   onSwitchToCode: () => void;
   onSwitchToPreview: () => void;
   onRefreshPreview: () => void;
@@ -16,8 +19,11 @@ export function EditorHeader({
   branding,
   editorView,
   previewPort,
+  previewUrl,
   defaultPreviewPort,
   onPreviewPortChange,
+  onPreviewUrlChange,
+  onResetPreviewUrl,
   onSwitchToCode,
   onSwitchToPreview,
   onRefreshPreview,
@@ -78,6 +84,22 @@ export function EditorHeader({
                 placeholder={defaultPreviewPort}
                 className="h-5 w-16 rounded border border-[#2a2d2e] bg-[#1b1b1b] px-2 text-[10px] text-gray-200 placeholder:text-gray-500 focus:border-[#0b5b96] focus:outline-none"
               />
+              <span className="uppercase tracking-[0.2em]">Url</span>
+              <input
+                value={previewUrl}
+                onChange={(event) => onPreviewUrlChange(event.target.value)}
+                placeholder="Auto preview URL"
+                className="h-5 w-72 rounded border border-[#2a2d2e] bg-[#1b1b1b] px-2 text-[10px] text-gray-200 placeholder:text-gray-500 focus:border-[#0b5b96] focus:outline-none"
+                title="Preview URL override. Leave empty for auto-generated URL."
+              />
+              <button
+                type="button"
+                onClick={onResetPreviewUrl}
+                className="h-5 rounded border border-[#2a2d2e] bg-[#1b1b1b] px-2 text-[10px] text-gray-200 hover:bg-[#2a2d2e]"
+                title="Reset to auto-generated preview URL"
+              >
+                Auto
+              </button>
               <button
                 type="button"
                 onClick={onRefreshPreview}

@@ -22,6 +22,7 @@ export const MODULE_METHOD_OPTIONS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'];
 export const FILE_EXTENSION_OPTIONS = [MODULE_EXTENSION];
 
 export const PREVIEW_PORT_STORAGE_KEY = 'editor-preview-port';
+export const PREVIEW_URL_STORAGE_KEY = 'editor-preview-url';
 export const DEFAULT_PREVIEW_PORT =
   process.env.NEXT_PUBLIC_KERNEL_PREVIEW_PORT?.trim() || '3000';
 

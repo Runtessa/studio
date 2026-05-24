@@ -59,6 +59,7 @@ import {
   MIN_SPLIT_PX,
   MODULE_EXTENSION,
   PREVIEW_PORT_STORAGE_KEY,
+  PREVIEW_URL_STORAGE_KEY,
   SHARED_FOLDER_STORAGE_KEY,
   SPLIT_RATIO_STORAGE_KEY,
 } from '@/components/editor/constants';
@@ -322,6 +323,11 @@ export default function EditorPage() {
     const stored = localStorage.getItem(PREVIEW_PORT_STORAGE_KEY);
     return stored !== null ? stored : DEFAULT_PREVIEW_PORT;
   });
+  const [previewUrlOverride, setPreviewUrlOverride] = useState(() => {
+    if (typeof window === 'undefined') return '';
+    const stored = localStorage.getItem(PREVIEW_URL_STORAGE_KEY);
+    return stored !== null ? stored : '';
+  });
   const previewBaseUrl = useMemo(() => {
     if (typeof window === 'undefined') return '';
     if (!tenantHost) return '';
@@ -436,6 +442,11 @@ export default function EditorPage() {
     if (typeof window === 'undefined') return;
     localStorage.setItem(PREVIEW_PORT_STORAGE_KEY, previewPort);
   }, [previewPort]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    localStorage.setItem(PREVIEW_URL_STORAGE_KEY, previewUrlOverride);
+  }, [previewUrlOverride]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -1467,7 +1478,7 @@ export default function EditorPage() {
     setPreviewNonce((prev) => prev + 1);
   }, [editorView, previewTarget?.name, previewTarget?.version, tenantHost]);
 
-  const previewSrc = useMemo(() => {
+  const autoPreviewSrc = useMemo(() => {
     if (!previewTarget || !tenantHost || !previewBaseUrl) {
       return '';
     }
@@ -1480,6 +1491,22 @@ export default function EditorPage() {
     const session = encodeURIComponent(previewSession);
     return `${base}/preview.html?name=${name}&version=${version}&tenantHost=${tenant}&previewSession=${session}&t=${previewNonce}`;
   }, [previewBaseUrl, previewNonce, previewSession, previewTarget, tenantHost]);
+
+  const previewSrc = useMemo(() => {
+    const custom = previewUrlOverride.trim();
+    if (!custom) return autoPreviewSrc;
+    try {
+      const url = new URL(
+        custom,
+        typeof window !== 'undefined' ? window.location.origin : 'http://localhost'
+      );
+      url.searchParams.set('t', String(previewNonce));
+      return url.toString();
+    } catch {
+      const suffix = custom.includes('?') ? '&' : '?';
+      return `${custom}${suffix}t=${encodeURIComponent(String(previewNonce))}`;
+    }
+  }, [autoPreviewSrc, previewNonce, previewUrlOverride]);
 
   useEffect(() => {
     if (!searchQuery.trim()) {
@@ -1696,8 +1723,11 @@ export default function EditorPage() {
           branding={branding}
           editorView={editorView}
           previewPort={previewPort}
+          previewUrl={previewUrlOverride.trim() || autoPreviewSrc}
           defaultPreviewPort={DEFAULT_PREVIEW_PORT}
           onPreviewPortChange={setPreviewPort}
+          onPreviewUrlChange={setPreviewUrlOverride}
+          onResetPreviewUrl={() => setPreviewUrlOverride('')}
           onSwitchToCode={() => setEditorView('code')}
           onSwitchToPreview={handleSwitchToPreview}
           onRefreshPreview={handleRefreshPreview}
