@@ -230,6 +230,8 @@ export type PreviewTarget = {
   version: string;
 };
 
+export type PreviewStage = 'draft' | 'published';
+
 export type DeleteTarget =
   | { type: 'file'; scope: PanelScope; meta: NodeMeta; label: string }
   | { type: 'folder'; scope: PanelScope; path: string[]; label: string };

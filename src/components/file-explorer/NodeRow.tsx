@@ -52,12 +52,13 @@ const NodeRow = React.memo(function NodeRow({
       onClick={(e) => {
         e.stopPropagation();
         onSelect(node, isRenaming);
+        if (node.type === "folder" && !isRenaming) {
+          onToggleExpand(node.id);
+        }
       }}
       onDoubleClick={(e) => {
         e.stopPropagation();
-        if (node.type === "folder") {
-          onToggleExpand(node.id);
-        } else {
+        if (node.type !== "folder") {
           onOpenFile?.(node);
         }
       }}

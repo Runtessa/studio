@@ -59,7 +59,8 @@ import {
   MIN_SPLIT_PX,
   MODULE_EXTENSION,
   PREVIEW_PORT_STORAGE_KEY,
-  PREVIEW_URL_STORAGE_KEY,
+  PREVIEW_ROUTE_STORAGE_KEY,
+  PREVIEW_STAGE_STORAGE_KEY,
   SHARED_FOLDER_STORAGE_KEY,
   SPLIT_RATIO_STORAGE_KEY,
 } from '@/components/editor/constants';
@@ -91,6 +92,7 @@ import type {
   NodeMeta,
   OrmModelDto,
   PanelScope,
+  PreviewStage,
   PreviewTarget,
   SearchMatchRange,
   SearchResult,
@@ -108,6 +110,21 @@ const CORE_API_BASE = process.env.NEXT_PUBLIC_CORE_API_URL?.trim() || '';
 const PREVIEW_EXCEPTION_BATCH_DELAY_MS = 800;
 const PREVIEW_EXCEPTION_DEDUPE_MS = 3000;
 const PREVIEW_EXCEPTION_MAX_QUEUE = 40;
+
+const normalizePreviewRouteValue = (value: string) => {
+  const raw = String(value || '').trim();
+  if (!raw) return '/';
+  if (/^https?:\/\//i.test(raw)) {
+    try {
+      const url = new URL(raw);
+      return `${url.pathname || '/'}${url.search || ''}${url.hash || ''}`;
+    } catch {
+      return '/';
+    }
+  }
+  if (raw.startsWith('?') || raw.startsWith('#')) return `/${raw}`;
+  return raw.startsWith('/') ? raw : `/${raw}`;
+};
 
 declare global {
   interface Window {
@@ -323,10 +340,16 @@ export default function EditorPage() {
     const stored = localStorage.getItem(PREVIEW_PORT_STORAGE_KEY);
     return stored !== null ? stored : DEFAULT_PREVIEW_PORT;
   });
-  const [previewUrlOverride, setPreviewUrlOverride] = useState(() => {
-    if (typeof window === 'undefined') return '';
-    const stored = localStorage.getItem(PREVIEW_URL_STORAGE_KEY);
-    return stored !== null ? stored : '';
+  const [previewRoute, setPreviewRoute] = useState(() => {
+    if (typeof window === 'undefined') return '/';
+    const stored = localStorage.getItem(PREVIEW_ROUTE_STORAGE_KEY);
+    return normalizePreviewRouteValue(String(stored || ''));
+  });
+  const [previewRouteInput, setPreviewRouteInput] = useState(previewRoute);
+  const [previewStage, setPreviewStage] = useState<PreviewStage>(() => {
+    if (typeof window === 'undefined') return 'draft';
+    const stored = localStorage.getItem(PREVIEW_STAGE_STORAGE_KEY);
+    return stored === 'published' ? 'published' : 'draft';
   });
   const previewBaseUrl = useMemo(() => {
     if (typeof window === 'undefined') return '';
@@ -445,8 +468,13 @@ export default function EditorPage() {
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    localStorage.setItem(PREVIEW_URL_STORAGE_KEY, previewUrlOverride);
-  }, [previewUrlOverride]);
+    localStorage.setItem(PREVIEW_ROUTE_STORAGE_KEY, previewRoute);
+  }, [previewRoute]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    localStorage.setItem(PREVIEW_STAGE_STORAGE_KEY, previewStage);
+  }, [previewStage]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -907,6 +935,7 @@ export default function EditorPage() {
       return [...prev, { id: file.id, name: file.name, language, meta }];
     });
 
+    setEditorView('code');
     setActiveFile({ id: file.id, name: file.name, language, meta });
   };
 
@@ -1484,29 +1513,18 @@ export default function EditorPage() {
     }
     const name = encodeURIComponent(previewTarget.name);
     const version = encodeURIComponent(previewTarget.version);
+    const normalizedRoute = normalizePreviewRouteValue(previewRoute);
+    const route = encodeURIComponent(normalizedRoute);
+    const stage = encodeURIComponent(previewStage);
     const tenant = encodeURIComponent(
       tenantHost.replace(/^https?:\/\//, '').split('/')[0].split(':')[0]
     );
     const base = previewBaseUrl.replace(/\/$/, '');
     const session = encodeURIComponent(previewSession);
-    return `${base}/preview.html?name=${name}&version=${version}&tenantHost=${tenant}&previewSession=${session}&t=${previewNonce}`;
-  }, [previewBaseUrl, previewNonce, previewSession, previewTarget, tenantHost]);
+    return `${base}/preview.html?name=${name}&version=${version}&tenantHost=${tenant}&previewSession=${session}&stage=${stage}&route=${route}&t=${previewNonce}`;
+  }, [previewBaseUrl, previewNonce, previewRoute, previewSession, previewStage, previewTarget, tenantHost]);
 
-  const previewSrc = useMemo(() => {
-    const custom = previewUrlOverride.trim();
-    if (!custom) return autoPreviewSrc;
-    try {
-      const url = new URL(
-        custom,
-        typeof window !== 'undefined' ? window.location.origin : 'http://localhost'
-      );
-      url.searchParams.set('t', String(previewNonce));
-      return url.toString();
-    } catch {
-      const suffix = custom.includes('?') ? '&' : '?';
-      return `${custom}${suffix}t=${encodeURIComponent(String(previewNonce))}`;
-    }
-  }, [autoPreviewSrc, previewNonce, previewUrlOverride]);
+  const previewSrc = autoPreviewSrc;
 
   useEffect(() => {
     if (!searchQuery.trim()) {
@@ -1723,11 +1741,17 @@ export default function EditorPage() {
           branding={branding}
           editorView={editorView}
           previewPort={previewPort}
-          previewUrl={previewUrlOverride.trim() || autoPreviewSrc}
+          previewRouteInput={previewRouteInput}
+          previewStage={previewStage}
           defaultPreviewPort={DEFAULT_PREVIEW_PORT}
+          onPreviewStageChange={setPreviewStage}
           onPreviewPortChange={setPreviewPort}
-          onPreviewUrlChange={setPreviewUrlOverride}
-          onResetPreviewUrl={() => setPreviewUrlOverride('')}
+          onPreviewRouteInputChange={setPreviewRouteInput}
+          onApplyPreviewRoute={() => setPreviewRoute(normalizePreviewRouteValue(previewRouteInput))}
+          onResetPreviewRoute={() => {
+            setPreviewRouteInput('/');
+            setPreviewRoute('/');
+          }}
           onSwitchToCode={() => setEditorView('code')}
           onSwitchToPreview={handleSwitchToPreview}
           onRefreshPreview={handleRefreshPreview}
@@ -1858,10 +1882,12 @@ export default function EditorPage() {
               isFileDirty={isFileDirty}
               onSelectTab={(file) => {
                 setAssistantDiff(null);
+                setEditorView('code');
                 setActiveFile(file);
               }}
               onSelectSideTab={(file) => {
                 setAssistantDiff(null);
+                setEditorView('code');
                 setSideFileId(file.id);
               }}
               onCloseTab={handleCloseFile}
