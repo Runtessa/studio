@@ -2,7 +2,13 @@ import type React from 'react';
 import dynamic from 'next/dynamic';
 import type * as monaco from 'monaco-editor';
 import type * as monacoApi from 'monaco-editor/esm/vs/editor/editor.api';
-import type { ActiveFile, PreviewTarget } from '@/components/editor/types';
+import { PreviewInspectPanel } from '@/components/editor/PreviewInspectPanel';
+import type {
+  ActiveFile,
+  PreviewInspectEvent,
+  PreviewStage,
+  PreviewTarget,
+} from '@/components/editor/types';
 
 const MonacoEditor = dynamic(() => import('@monaco-editor/react'), { ssr: false });
 const MonacoDiffEditor = dynamic(
@@ -49,6 +55,12 @@ type EditorWorkspaceProps = {
   previewTarget: PreviewTarget | null;
   previewSrc: string;
   previewFrameRef: React.RefObject<HTMLIFrameElement | null>;
+  previewStage: PreviewStage;
+  previewRoute: string;
+  previewSession: string;
+  previewInspectOpen: boolean;
+  previewInspectEvents: PreviewInspectEvent[];
+  onClearPreviewInspectEvents: () => void;
   tenantHost: string | null;
   isSharedMode: boolean;
   uiCount: number;
@@ -82,6 +94,12 @@ export function EditorWorkspace({
   previewTarget,
   previewSrc,
   previewFrameRef,
+  previewStage,
+  previewRoute,
+  previewSession,
+  previewInspectOpen,
+  previewInspectEvents,
+  onClearPreviewInspectEvents,
   tenantHost,
   isSharedMode,
   uiCount,
@@ -201,29 +219,43 @@ export function EditorWorkspace({
       )}
       {editorView === 'preview' && (
         <div className="flex min-h-0 flex-1">
-        {!previewTarget ? (
-          <div className="flex flex-1 items-center justify-center text-sm text-gray-400">
-            {isSharedMode
-              ? 'Switch to preview to load the shared project.'
-              : uiCount === 0
-                ? 'No UI entities available for preview.'
-                : 'Preview is loading...'}
+          <div className="flex min-h-0 min-w-0 flex-1">
+            {!previewTarget ? (
+              <div className="flex flex-1 items-center justify-center text-sm text-gray-400">
+                {isSharedMode
+                  ? 'Switch to preview to load the shared project.'
+                  : uiCount === 0
+                    ? 'No UI entities available for preview.'
+                    : 'Preview is loading...'}
+              </div>
+            ) : !tenantHost ? (
+              <div className="flex flex-1 items-center justify-center text-sm text-gray-400">
+                Select a tenant to load preview.
+              </div>
+            ) : (
+              <iframe
+                key={previewSrc}
+                ref={previewFrameRef}
+                title="UI preview"
+                className="h-full w-full border-0 bg-white"
+                src={previewSrc}
+                sandbox="allow-scripts allow-same-origin allow-forms"
+              />
+            )}
           </div>
-        ) : !tenantHost ? (
-          <div className="flex flex-1 items-center justify-center text-sm text-gray-400">
-            Select a tenant to load preview.
-          </div>
-        ) : (
-          <iframe
-            key={previewSrc}
-            ref={previewFrameRef}
-            title="UI preview"
-            className="h-full w-full border-0 bg-white"
-            src={previewSrc}
-            sandbox="allow-scripts allow-same-origin allow-forms"
-          />
-        )}
-      </div>
+          {previewInspectOpen && (
+            <PreviewInspectPanel
+              previewTarget={previewTarget}
+              previewStage={previewStage}
+              previewRoute={previewRoute}
+              previewSession={previewSession}
+              previewSrc={previewSrc}
+              tenantHost={tenantHost}
+              events={previewInspectEvents}
+              onClearEvents={onClearPreviewInspectEvents}
+            />
+          )}
+        </div>
       )}
       {editorDropTarget && editorView === 'code' && (
         <div className="pointer-events-none absolute inset-0">

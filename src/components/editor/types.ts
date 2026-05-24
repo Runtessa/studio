@@ -231,6 +231,27 @@ export type PreviewTarget = {
 };
 
 export type PreviewStage = 'draft' | 'published';
+export type PreviewInspectEvent = {
+  id: string;
+  kind: string;
+  level: string;
+  message: string;
+  createdAt: string;
+  requestUrl?: string;
+  method?: string;
+  status?: number | null;
+  sourceUrl?: string;
+  line?: number | null;
+  column?: number | null;
+  stack?: string;
+  componentStack?: string;
+  responseSnippet?: string;
+  href?: string;
+  previewName?: string;
+  previewVersion?: string;
+  previewStage?: string;
+  kernelBuild?: string;
+};
 
 export type DeleteTarget =
   | { type: 'file'; scope: PanelScope; meta: NodeMeta; label: string }

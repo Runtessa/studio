@@ -58,6 +58,7 @@ import {
   MIN_LEFT_PANEL_WIDTH,
   MIN_SPLIT_PX,
   MODULE_EXTENSION,
+  PREVIEW_INSPECT_OPEN_STORAGE_KEY,
   PREVIEW_PORT_STORAGE_KEY,
   PREVIEW_ROUTE_STORAGE_KEY,
   PREVIEW_STAGE_STORAGE_KEY,
@@ -79,7 +80,10 @@ import {
   normalizeSharedPath,
   replaceAtRange,
 } from '@/components/editor/utils';
-import type { AssistantDiffPreview } from '@/components/editor/page-types';
+import type {
+  AssistantDiffPreview,
+  PreviewExceptionPayload,
+} from '@/components/editor/page-types';
 import type {
   ActiveFile,
   DeleteTarget,
@@ -92,6 +96,7 @@ import type {
   NodeMeta,
   OrmModelDto,
   PanelScope,
+  PreviewInspectEvent,
   PreviewStage,
   PreviewTarget,
   SearchMatchRange,
@@ -351,6 +356,14 @@ export default function EditorPage() {
     const stored = localStorage.getItem(PREVIEW_STAGE_STORAGE_KEY);
     return stored === 'published' ? 'published' : 'draft';
   });
+  const [previewInspectOpen, setPreviewInspectOpen] = useState(() => {
+    if (typeof window === 'undefined') return true;
+    const stored = localStorage.getItem(PREVIEW_INSPECT_OPEN_STORAGE_KEY);
+    return stored !== '0';
+  });
+  const [previewInspectEvents, setPreviewInspectEvents] = useState<PreviewInspectEvent[]>(
+    []
+  );
   const previewBaseUrl = useMemo(() => {
     if (typeof window === 'undefined') return '';
     if (!tenantHost) return '';
@@ -475,6 +488,80 @@ export default function EditorPage() {
     if (typeof window === 'undefined') return;
     localStorage.setItem(PREVIEW_STAGE_STORAGE_KEY, previewStage);
   }, [previewStage]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    localStorage.setItem(
+      PREVIEW_INSPECT_OPEN_STORAGE_KEY,
+      previewInspectOpen ? '1' : '0'
+    );
+  }, [previewInspectOpen]);
+
+  useEffect(() => {
+    setPreviewInspectEvents([]);
+  }, [previewSession]);
+
+  useEffect(() => {
+    const handlePreviewMessage = (event: MessageEvent) => {
+      const frameWindow = previewFrameRef.current?.contentWindow;
+      if (!frameWindow || event.source !== frameWindow) return;
+      const data = event.data;
+      if (!data || typeof data !== 'object') return;
+      const source = String((data as { source?: string }).source || '');
+      if (source !== 'idp-preview-exception') return;
+      const payloadCandidate = (data as { payload?: unknown }).payload;
+      const payload =
+        payloadCandidate && typeof payloadCandidate === 'object'
+          ? (payloadCandidate as PreviewExceptionPayload)
+          : null;
+      if (!payload?.message) return;
+      if (payload.previewSession && payload.previewSession !== previewSession) return;
+
+      const next: PreviewInspectEvent = {
+        id:
+          String(payload.id || '').trim() ||
+          `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        kind: String(payload.kind || 'runtime-error'),
+        level: String(payload.level || 'error'),
+        message: String(payload.message || '').trim(),
+        createdAt: String(payload.createdAt || new Date().toISOString()),
+        requestUrl: payload.requestUrl ? String(payload.requestUrl) : undefined,
+        method: payload.method ? String(payload.method) : undefined,
+        status:
+          typeof payload.status === 'number' && Number.isFinite(payload.status)
+            ? payload.status
+            : null,
+        sourceUrl: payload.sourceUrl ? String(payload.sourceUrl) : undefined,
+        line:
+          typeof payload.line === 'number' && Number.isFinite(payload.line)
+            ? payload.line
+            : null,
+        column:
+          typeof payload.column === 'number' && Number.isFinite(payload.column)
+            ? payload.column
+            : null,
+        stack: payload.stack ? String(payload.stack) : undefined,
+        componentStack: payload.componentStack
+          ? String(payload.componentStack)
+          : undefined,
+        responseSnippet: payload.responseSnippet
+          ? String(payload.responseSnippet)
+          : undefined,
+        href: payload.href ? String(payload.href) : undefined,
+        previewName: payload.previewName ? String(payload.previewName) : undefined,
+        previewVersion: payload.previewVersion
+          ? String(payload.previewVersion)
+          : undefined,
+        previewStage: payload.previewStage ? String(payload.previewStage) : undefined,
+        kernelBuild: payload.kernelBuild ? String(payload.kernelBuild) : undefined,
+      };
+
+      setPreviewInspectEvents((prev) => [next, ...prev].slice(0, 100));
+    };
+
+    window.addEventListener('message', handlePreviewMessage);
+    return () => window.removeEventListener('message', handlePreviewMessage);
+  }, [previewSession]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -1507,24 +1594,52 @@ export default function EditorPage() {
     setPreviewNonce((prev) => prev + 1);
   }, [editorView, previewTarget?.name, previewTarget?.version, tenantHost]);
 
+  const appliedPreviewRoute = useMemo(
+    () => normalizePreviewRouteValue(previewRoute),
+    [previewRoute]
+  );
+
   const autoPreviewSrc = useMemo(() => {
     if (!previewTarget || !tenantHost || !previewBaseUrl) {
       return '';
     }
     const name = encodeURIComponent(previewTarget.name);
     const version = encodeURIComponent(previewTarget.version);
-    const normalizedRoute = normalizePreviewRouteValue(previewRoute);
-    const route = encodeURIComponent(normalizedRoute);
     const stage = encodeURIComponent(previewStage);
     const tenant = encodeURIComponent(
       tenantHost.replace(/^https?:\/\//, '').split('/')[0].split(':')[0]
     );
     const base = previewBaseUrl.replace(/\/$/, '');
     const session = encodeURIComponent(previewSession);
-    return `${base}/preview.html?name=${name}&version=${version}&tenantHost=${tenant}&previewSession=${session}&stage=${stage}&route=${route}&t=${previewNonce}`;
-  }, [previewBaseUrl, previewNonce, previewRoute, previewSession, previewStage, previewTarget, tenantHost]);
+    return `${base}/preview.html?name=${name}&version=${version}&tenantHost=${tenant}&previewSession=${session}&stage=${stage}&t=${previewNonce}`;
+  }, [previewBaseUrl, previewNonce, previewSession, previewStage, previewTarget, tenantHost]);
 
   const previewSrc = autoPreviewSrc;
+
+  useEffect(() => {
+    if (editorView !== 'preview') return;
+    let cancelled = false;
+    const postNavigateMessage = () => {
+      if (cancelled) return;
+      const frameWindow = previewFrameRef.current?.contentWindow;
+      if (!frameWindow) {
+        window.setTimeout(postNavigateMessage, 120);
+        return;
+      }
+      frameWindow.postMessage(
+        {
+          source: 'idp-preview-control',
+          action: 'navigate',
+          route: appliedPreviewRoute,
+        },
+        '*'
+      );
+    };
+    postNavigateMessage();
+    return () => {
+      cancelled = true;
+    };
+  }, [appliedPreviewRoute, editorView, previewNonce, previewSrc]);
 
   useEffect(() => {
     if (!searchQuery.trim()) {
@@ -1743,6 +1858,7 @@ export default function EditorPage() {
           previewPort={previewPort}
           previewRouteInput={previewRouteInput}
           previewStage={previewStage}
+          previewInspectOpen={previewInspectOpen}
           defaultPreviewPort={DEFAULT_PREVIEW_PORT}
           onPreviewStageChange={setPreviewStage}
           onPreviewPortChange={setPreviewPort}
@@ -1752,6 +1868,9 @@ export default function EditorPage() {
             setPreviewRouteInput('/');
             setPreviewRoute('/');
           }}
+          onTogglePreviewInspect={() =>
+            setPreviewInspectOpen((prev) => !prev)
+          }
           onSwitchToCode={() => setEditorView('code')}
           onSwitchToPreview={handleSwitchToPreview}
           onRefreshPreview={handleRefreshPreview}
@@ -1938,6 +2057,12 @@ export default function EditorPage() {
               previewTarget={previewTarget}
               previewSrc={previewSrc}
               previewFrameRef={previewFrameRef}
+              previewStage={previewStage}
+              previewRoute={appliedPreviewRoute}
+              previewSession={previewSession}
+              previewInspectOpen={previewInspectOpen}
+              previewInspectEvents={previewInspectEvents}
+              onClearPreviewInspectEvents={() => setPreviewInspectEvents([])}
               tenantHost={tenantHost}
               isSharedMode={isSharedMode}
               uiCount={uiData.length}

@@ -20,6 +20,7 @@ import {
   upsertTailwindPackage,
 } from '@/lib/ui-entity-tailwind';
 import { ensureTenantNpmBuilds } from '@/lib/tenant-npm-builds';
+import { repairUiCompiledCode } from '@/lib/ui-compiled-exports';
 
 const normalizeName = (raw: unknown): string => {
   if (typeof raw !== 'string' || !raw.trim()) {
@@ -110,9 +111,14 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
     const normalizedName = normalizeName(name);
     const normalizedVersion = normalizeVersion(version);
     const normalizedCode = normalizeSourceCode(req.body?.code ?? codeBlob);
-    const compiledCode = normalizeCompiledCode(req.body?.codeBlob ?? codeBlob ?? normalizedCode);
+    const compiledCodeRaw = normalizeCompiledCode(req.body?.codeBlob ?? codeBlob ?? normalizedCode);
     const normalizedDeps = normalizeDependencies(dependencies);
     const fileExtension = normalizeFileExtension(req.body?.fileExtension);
+    const compiledCode = repairUiCompiledCode(
+      normalizedName,
+      compiledCodeRaw,
+      fileExtension
+    );
     const usesTailwind =
       shouldBuildTailwind(fileExtension) && !isTailwindConfigName(normalizedName);
     const tailwindName = getTailwindPackageName(normalizedName);

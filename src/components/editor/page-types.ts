@@ -21,6 +21,7 @@ export type PreviewExceptionPayload = {
   level?: 'error' | 'warn' | 'info' | string;
   message?: string;
   stack?: string;
+  componentStack?: string;
   sourceUrl?: string;
   line?: number | null;
   column?: number | null;
@@ -31,8 +32,10 @@ export type PreviewExceptionPayload = {
   previewName?: string;
   previewVersion?: string;
   previewSession?: string;
+  previewStage?: string;
   tenantHost?: string;
   href?: string;
+  kernelBuild?: string;
   createdAt?: string;
 };
 

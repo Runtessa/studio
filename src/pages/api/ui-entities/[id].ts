@@ -22,6 +22,7 @@ import {
   upsertTailwindPackage,
 } from '@/lib/ui-entity-tailwind';
 import { ensureTenantNpmBuilds } from '@/lib/tenant-npm-builds';
+import { repairUiCompiledCode } from '@/lib/ui-compiled-exports';
 
 const normalizeName = (raw: unknown): string => {
   if (typeof raw !== 'string' || !raw.trim()) {
@@ -151,7 +152,7 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
     const nextVersion = req.body?.version ? normalizeVersion(req.body.version) : pkg.version;
     const nextSource =
       req.body?.code !== undefined ? normalizeSourceCode(req.body.code) : pkg.code;
-    const nextCompiled =
+    const nextCompiledRaw =
       req.body?.codeBlob !== undefined ? normalizeCompiledCode(req.body.codeBlob) : pkg.codeBlob;
     const nextDepsRaw =
       req.body?.dependencies !== undefined
@@ -161,6 +162,7 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
       req.body?.fileExtension !== undefined
         ? normalizeFileExtension(req.body.fileExtension)
         : pkg.fileExtension;
+    const nextCompiled = repairUiCompiledCode(nextName, nextCompiledRaw, nextExt);
     const previousName = pkg.name;
     const previousVersion = pkg.version;
     const usesTailwind =

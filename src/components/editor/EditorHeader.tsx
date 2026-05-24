@@ -7,12 +7,14 @@ type EditorHeaderProps = {
   previewPort: string;
   previewRouteInput: string;
   previewStage: 'draft' | 'published';
+  previewInspectOpen: boolean;
   defaultPreviewPort: string;
   onPreviewStageChange: (value: 'draft' | 'published') => void;
   onPreviewPortChange: (value: string) => void;
   onPreviewRouteInputChange: (value: string) => void;
   onApplyPreviewRoute: () => void;
   onResetPreviewRoute: () => void;
+  onTogglePreviewInspect: () => void;
   onSwitchToCode: () => void;
   onSwitchToPreview: () => void;
   onRefreshPreview: () => void;
@@ -24,12 +26,14 @@ export function EditorHeader({
   previewPort,
   previewRouteInput,
   previewStage,
+  previewInspectOpen,
   defaultPreviewPort,
   onPreviewStageChange,
   onPreviewPortChange,
   onPreviewRouteInputChange,
   onApplyPreviewRoute,
   onResetPreviewRoute,
+  onTogglePreviewInspect,
   onSwitchToCode,
   onSwitchToPreview,
   onRefreshPreview,
@@ -116,6 +120,18 @@ export function EditorHeader({
               title="Refresh preview"
             >
               Refresh
+            </button>
+            <button
+              type="button"
+              onClick={onTogglePreviewInspect}
+              className={`h-5 rounded border px-2 text-[10px] ${
+                previewInspectOpen
+                  ? 'border-[#0b5b96] bg-[#0b5b96] text-white'
+                  : 'border-[#2a2d2e] bg-[#1b1b1b] text-gray-200 hover:bg-[#2a2d2e]'
+              }`}
+              title="Toggle preview inspect panel"
+            >
+              Inspect
             </button>
           </div>
         )}

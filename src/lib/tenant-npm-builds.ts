@@ -13,6 +13,7 @@ const EXTERNALS = ['react', 'react-dom', 'react-dom/client'];
 type ParsedSpecifier = {
   installName: string;
   requestSpecifier: string;
+  runtimeSpecifier: string;
 };
 
 type BuiltArtifact = {
@@ -42,6 +43,14 @@ const parseRequestSpecifier = (request: string): ParsedSpecifier | null => {
     return null;
   }
 
+  if (normalized === 'react-router/dom') {
+    return {
+      installName: 'react-router-dom',
+      requestSpecifier: normalized,
+      runtimeSpecifier: 'react-router-dom',
+    };
+  }
+
   const parts = normalized.split('/').filter(Boolean);
   if (!parts.length) return null;
   if (normalized.startsWith('@')) {
@@ -50,11 +59,19 @@ const parseRequestSpecifier = (request: string): ParsedSpecifier | null => {
     const pkg = parts[1];
     if (!/^@[a-z0-9][a-z0-9._-]*$/i.test(scope)) return null;
     if (!/^[a-z0-9][a-z0-9._-]*$/i.test(pkg)) return null;
-    return { installName: `${scope}/${pkg}`, requestSpecifier: normalized };
+    return {
+      installName: `${scope}/${pkg}`,
+      requestSpecifier: normalized,
+      runtimeSpecifier: normalized,
+    };
   }
   const pkg = parts[0];
   if (!/^[a-z0-9][a-z0-9._-]*$/i.test(pkg)) return null;
-  return { installName: pkg, requestSpecifier: normalized };
+  return {
+    installName: pkg,
+    requestSpecifier: normalized,
+    runtimeSpecifier: normalized,
+  };
 };
 
 const resolvePackageJsonPath = (workDir: string, packageName: string) =>
@@ -112,6 +129,12 @@ const cleanupDir = async (dir: string) => {
   }
 };
 
+const isDuplicateKeyError = (error: unknown) => {
+  if (!error || typeof error !== 'object') return false;
+  const message = String((error as { message?: unknown }).message || '');
+  return message.includes('duplicate key value violates unique constraint');
+};
+
 const buildArtifact = async (request: string, requestedVersion: string): Promise<BuiltArtifact> => {
   const parsed = parseRequestSpecifier(request);
   if (!parsed) throw new Error(`Invalid npm package specifier: ${request}`);
@@ -128,7 +151,7 @@ const buildArtifact = async (request: string, requestedVersion: string): Promise
     );
 
     await runNpmInstall(tempRoot, `${parsed.installName}@${requestedVersion}`);
-    const bundledSource = await bundleSpecifier(tempRoot, parsed.requestSpecifier);
+    const bundledSource = await bundleSpecifier(tempRoot, parsed.runtimeSpecifier);
     const packageJsonPath = resolvePackageJsonPath(tempRoot, parsed.installName);
     const packageJsonRaw = await fs.readFile(packageJsonPath, 'utf8');
     const packageJson = JSON.parse(packageJsonRaw) as Record<string, unknown>;
@@ -168,16 +191,34 @@ export const ensureTenantNpmBuilds = async (tenant: Tenant, dependencies: string
   const compiledRepo = CoreDataSource.getRepository(CompiledCode);
 
   for (const parsed of specifiers) {
-    const existing = await npmBuildRepo.findOne({
+    const existingByRequested = await npmBuildRepo.findOne({
       where: {
         tenant: { id: tenant.id },
         specifier: parsed.requestSpecifier,
         requestedVersion,
       },
-      relations: ['compiledCode'],
+      relations: ['compiledCode', 'sourceCode'],
       order: { createdAt: 'DESC' },
     });
-    if (existing?.compiledCode?.code) continue;
+    if (existingByRequested?.compiledCode?.code) {
+      let existingRuntimeSpecifier = '';
+      try {
+        const metadata = existingByRequested.sourceCode?.code
+          ? JSON.parse(existingByRequested.sourceCode.code)
+          : null;
+        if (metadata && typeof metadata.runtimeSpecifier === 'string') {
+          existingRuntimeSpecifier = metadata.runtimeSpecifier.trim();
+        }
+      } catch {
+        existingRuntimeSpecifier = '';
+      }
+      if (
+        existingRuntimeSpecifier &&
+        existingRuntimeSpecifier === parsed.runtimeSpecifier
+      ) {
+        continue;
+      }
+    }
 
     const artifact = await buildArtifact(parsed.requestSpecifier, requestedVersion);
     const sourceCode = sourceRepo.create({
@@ -185,6 +226,7 @@ export const ensureTenantNpmBuilds = async (tenant: Tenant, dependencies: string
         {
           specifier: artifact.specifier,
           installName: artifact.installName,
+          runtimeSpecifier: parsed.runtimeSpecifier,
           requestedVersion: artifact.requestedVersion,
           resolvedVersion: artifact.resolvedVersion,
           packageJson: artifact.packageMetadata,
@@ -197,16 +239,61 @@ export const ensureTenantNpmBuilds = async (tenant: Tenant, dependencies: string
     await sourceRepo.save(sourceCode);
     await compiledRepo.save(compiledCode);
 
-    const npmBuild = npmBuildRepo.create({
-      tenant,
-      specifier: artifact.specifier,
-      installName: artifact.installName,
-      requestedVersion: artifact.requestedVersion,
-      resolvedVersion: artifact.resolvedVersion,
-      sourceCode,
-      compiledCode,
-      dependencies: artifact.dependencies,
-    });
-    await npmBuildRepo.save(npmBuild);
+    let targetBuild = existingByRequested;
+    if (!targetBuild) {
+      targetBuild = await npmBuildRepo.findOne({
+        where: {
+          tenant: { id: tenant.id },
+          specifier: artifact.specifier,
+          resolvedVersion: artifact.resolvedVersion,
+        },
+        relations: ['compiledCode', 'sourceCode'],
+        order: { createdAt: 'DESC' },
+      });
+    }
+
+    const npmBuild = targetBuild
+      ? Object.assign(targetBuild, {
+          installName: artifact.installName,
+          requestedVersion: artifact.requestedVersion,
+          resolvedVersion: artifact.resolvedVersion,
+          sourceCode,
+          compiledCode,
+          dependencies: artifact.dependencies,
+        })
+      : npmBuildRepo.create({
+          tenant,
+          specifier: artifact.specifier,
+          installName: artifact.installName,
+          requestedVersion: artifact.requestedVersion,
+          resolvedVersion: artifact.resolvedVersion,
+          sourceCode,
+          compiledCode,
+          dependencies: artifact.dependencies,
+        });
+
+    try {
+      await npmBuildRepo.save(npmBuild);
+    } catch (error) {
+      if (!isDuplicateKeyError(error)) {
+        throw error;
+      }
+      const conflicted = await npmBuildRepo.findOne({
+        where: {
+          tenant: { id: tenant.id },
+          specifier: artifact.specifier,
+          resolvedVersion: artifact.resolvedVersion,
+        },
+      });
+      if (!conflicted) {
+        throw error;
+      }
+      conflicted.installName = artifact.installName;
+      conflicted.requestedVersion = artifact.requestedVersion;
+      conflicted.sourceCode = sourceCode;
+      conflicted.compiledCode = compiledCode;
+      conflicted.dependencies = artifact.dependencies;
+      await npmBuildRepo.save(conflicted);
+    }
   }
 };
