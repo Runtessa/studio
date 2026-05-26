@@ -27,7 +27,7 @@ type BuiltArtifact = {
 };
 
 const isBlockedName = (name: string) =>
-  name.startsWith('@app/') || name.startsWith('@idp/') || name.startsWith('idp/');
+  name.startsWith('@app/') || name.startsWith('@idp/') || name.startsWith('idp/') || name.startsWith('@shared/');
 
 const parseRequestSpecifier = (request: string): ParsedSpecifier | null => {
   const normalized = String(request || '').trim();

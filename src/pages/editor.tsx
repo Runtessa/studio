@@ -522,14 +522,25 @@ export default function EditorPage() {
           String(payload.id || '').trim() ||
           `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         kind: String(payload.kind || 'runtime-error'),
+        category: payload.category ? String(payload.category) : undefined,
         level: String(payload.level || 'error'),
         message: String(payload.message || '').trim(),
         createdAt: String(payload.createdAt || new Date().toISOString()),
+        requestId: payload.requestId ? String(payload.requestId) : undefined,
         requestUrl: payload.requestUrl ? String(payload.requestUrl) : undefined,
         method: payload.method ? String(payload.method) : undefined,
         status:
           typeof payload.status === 'number' && Number.isFinite(payload.status)
             ? payload.status
+            : null,
+        statusText: payload.statusText ? String(payload.statusText) : undefined,
+        durationMs:
+          typeof payload.durationMs === 'number' && Number.isFinite(payload.durationMs)
+            ? payload.durationMs
+            : null,
+        responseBytes:
+          typeof payload.responseBytes === 'number' && Number.isFinite(payload.responseBytes)
+            ? payload.responseBytes
             : null,
         sourceUrl: payload.sourceUrl ? String(payload.sourceUrl) : undefined,
         line:

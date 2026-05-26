@@ -234,12 +234,17 @@ export type PreviewStage = 'draft' | 'published';
 export type PreviewInspectEvent = {
   id: string;
   kind: string;
+  category?: string;
   level: string;
   message: string;
   createdAt: string;
+  requestId?: string;
   requestUrl?: string;
   method?: string;
   status?: number | null;
+  statusText?: string;
+  durationMs?: number | null;
+  responseBytes?: number | null;
   sourceUrl?: string;
   line?: number | null;
   column?: number | null;

@@ -18,16 +18,21 @@ export type AssistantDiffPreview = {
 export type PreviewExceptionPayload = {
   id?: string;
   kind?: string;
+  category?: string;
   level?: 'error' | 'warn' | 'info' | string;
   message?: string;
   stack?: string;
   componentStack?: string;
+  requestId?: string;
   sourceUrl?: string;
   line?: number | null;
   column?: number | null;
   requestUrl?: string;
   method?: string;
   status?: number | null;
+  statusText?: string;
+  durationMs?: number | null;
+  responseBytes?: number | null;
   responseSnippet?: string;
   previewName?: string;
   previewVersion?: string;
