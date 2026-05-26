@@ -29,7 +29,7 @@ export function EditorBottomBar({
         {activeFile?.meta?.kind === 'ui' && (
           <div className="flex items-center gap-2">
             <span className="flex h-5 items-center rounded border border-[#3c3c3c] bg-[#1e1e1e] px-2 text-[10px] uppercase tracking-wide">
-              UI Entity
+              {activeFile.meta.draftId ? 'UI Draft' : 'UI Entity'}
             </span>
             <span className="text-gray-200 leading-none">{activeFile.meta.name}</span>
           </div>

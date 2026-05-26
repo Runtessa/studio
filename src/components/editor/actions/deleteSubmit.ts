@@ -118,8 +118,11 @@ export const submitDelete = async ({
         await apiFetch(`/api/modules/${meta.backendId}`, { method: 'DELETE' });
       } else if (meta.kind === 'model') {
         await apiFetch(`/api/models/${meta.backendId}`, { method: 'DELETE' });
-      } else {
+      } else if (meta.kind === 'ui') {
         await apiFetch(`/api/ui-entities/${meta.backendId}`, { method: 'DELETE' });
+      } else {
+        showError('Unsaved imported draft is not part of explorer tree.');
+        return;
       }
       success('File deleted');
     } else {

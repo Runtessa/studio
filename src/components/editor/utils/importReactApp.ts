@@ -1,4 +1,9 @@
-import { buildSharedBundle, extractUiDependencies } from '@/components/editor/utils/shared';
+import {
+  buildSharedBundle,
+  extractUiDependencies,
+  UI_BUILTIN_DEPENDENCIES,
+  UI_INTERNAL_IMPORT_PREFIX,
+} from '@/components/editor/utils/shared';
 import type { SharedFileDto, SharedProjectDto } from '@/components/editor/types';
 
 type ImportedFile = {
@@ -16,15 +21,12 @@ export type ImportedReactAppPayload = {
   dependencies: string[];
   codeBlob: string;
   fileCount: number;
+  files: Array<{
+    path: string;
+    fileExtension: string;
+    content: string;
+  }>;
 };
-
-const BUILTIN_DEPS = new Set([
-  'react',
-  'react-dom',
-  'react-dom/client',
-  'react/jsx-runtime',
-  'react/jsx-dev-runtime',
-]);
 
 const PATH_IGNORES = [
   /^node_modules\//i,
@@ -43,9 +45,79 @@ const SOURCE_EXTS = new Set([
   'css',
   'json',
 ]);
+const NON_RUNTIME_BASENAMES = new Set([
+  'package.json',
+  'package-lock.json',
+  'pnpm-lock.yaml',
+  'yarn.lock',
+  'bun.lockb',
+]);
+const NON_RUNTIME_PATH_PATTERNS = [
+  /(^|\/)(tsconfig|jsconfig)\.json$/i,
+  /(^|\/)(vite|vitest|webpack|rollup|esbuild|babel|postcss|tailwind|eslint|prettier|jest|tsup|swc)\.config\.[^/]+$/i,
+];
 
 const normalizePath = (value: string) =>
   value.replace(/\\/g, '/').replace(/^\/+/, '').replace(/\/{2,}/g, '/').trim();
+const baseName = (value: string) => {
+  const normalized = normalizePath(value);
+  const parts = normalized.split('/').filter(Boolean);
+  return (parts[parts.length - 1] || '').toLowerCase();
+};
+const isPackageJsonPath = (value: string) => baseName(value) === 'package.json';
+const isRuntimeFilePath = (value: string) => {
+  const normalized = normalizePath(value);
+  const name = baseName(normalized);
+  if (!normalized) return false;
+  if (NON_RUNTIME_BASENAMES.has(name)) return false;
+  return !NON_RUNTIME_PATH_PATTERNS.some((pattern) => pattern.test(normalized));
+};
+
+export const normalizeImportedDraftPath = (value: string) => normalizePath(value);
+
+export const buildImportedDraftFileId = (draftId: string, path: string) =>
+  `ui-import-${String(draftId || '').trim()}:${normalizeImportedDraftPath(path)}`;
+
+const resolveRelativePath = (fromFilePath: string, requestPath: string) => {
+  const fromParts = normalizePath(fromFilePath).split('/').slice(0, -1);
+  const reqParts = String(requestPath || '')
+    .split('/')
+    .filter((part) => part.length > 0);
+  const stack = [...fromParts];
+  reqParts.forEach((part) => {
+    if (part === '.') return;
+    if (part === '..') {
+      stack.pop();
+      return;
+    }
+    stack.push(part);
+  });
+  return normalizePath(stack.join('/'));
+};
+
+const rewriteModuleSpecifier = (specifier: string, fromFilePath: string) => {
+  const trimmed = String(specifier || '').trim();
+  if (!trimmed) return specifier;
+  if (!(trimmed.startsWith('./') || trimmed.startsWith('../'))) return specifier;
+  const absolutePath = resolveRelativePath(fromFilePath, trimmed);
+  return `${UI_INTERNAL_IMPORT_PREFIX}${absolutePath}`;
+};
+
+const rewriteSourceImports = (source: string, fromFilePath: string) => {
+  if (!source) return source;
+  const replace = (regex: RegExp) =>
+    source.replace(regex, (full, prefix, specifier, suffix) => {
+      const nextSpecifier = rewriteModuleSpecifier(String(specifier || ''), fromFilePath);
+      if (nextSpecifier === specifier) return full;
+      return `${prefix}${nextSpecifier}${suffix}`;
+    });
+  source = replace(/(^\s*import(?:\s+type)?[\s\S]*?\s+from\s*['"])([^'"]+)(['"]\s*;?)/gm);
+  source = replace(/(^\s*import\s*['"])([^'"]+)(['"]\s*;?)/gm);
+  source = replace(/(^\s*export(?:\s+type)?[\s\S]*?\s+from\s*['"])([^'"]+)(['"]\s*;?)/gm);
+  source = replace(/(require\(\s*['"])([^'"]+)(['"]\s*\))/gm);
+  source = replace(/(import\(\s*['"])([^'"]+)(['"]\s*\))/gm);
+  return source;
+};
 
 const sanitizeNameSegment = (value: string) =>
   value
@@ -153,7 +225,7 @@ const collectPackageDeps = (packageJson: Record<string, unknown> | null) => {
     if (!section || typeof section !== 'object') continue;
     for (const key of Object.keys(section as Record<string, unknown>)) {
       const dep = key.trim();
-      if (!dep || BUILTIN_DEPS.has(dep)) continue;
+      if (!dep || UI_BUILTIN_DEPENDENCIES.has(dep)) continue;
       if (dep.startsWith('.') || dep.startsWith('/')) continue;
       out.add(dep);
     }
@@ -174,14 +246,24 @@ export const importReactAppFromDirectory = async (
   );
 
   const importedFiles: ImportedFile[] = [];
+  let packageJson: Record<string, unknown> | null = null;
   for (const file of rawFiles) {
     const rel = normalizePath(String((file as any).webkitRelativePath || file.name || ''));
     if (!rel) continue;
     const stripped = rootPrefix && rel.startsWith(`${rootPrefix}/`) ? rel.slice(rootPrefix.length + 1) : rel;
     if (!stripped) continue;
     if (PATH_IGNORES.some((pattern) => pattern.test(stripped))) continue;
+    if (isPackageJsonPath(stripped)) {
+      try {
+        packageJson = JSON.parse(await file.text());
+      } catch {
+        packageJson = null;
+      }
+      continue;
+    }
     const ext = (stripped.split('.').pop() || '').toLowerCase();
     if (!SOURCE_EXTS.has(ext)) continue;
+    if (!isRuntimeFilePath(stripped)) continue;
     const content = await file.text();
     importedFiles.push({
       path: stripped,
@@ -193,36 +275,27 @@ export const importReactAppFromDirectory = async (
   if (!importedFiles.length) {
     throw new Error('No supported source files found in selected directory.');
   }
+  const rewrittenFiles = importedFiles.map((file) => ({
+    ...file,
+    content: rewriteSourceImports(file.content, file.path),
+  }));
 
-  const packageFile =
-    importedFiles.find((file) => file.path === 'package.json') ||
-    importedFiles.find((file) => file.path.endsWith('/package.json')) ||
-    null;
-  let packageJson: Record<string, unknown> | null = null;
-  if (packageFile) {
-    try {
-      packageJson = JSON.parse(packageFile.content);
-    } catch {
-      packageJson = null;
-    }
-  }
-
-  const entryPath = resolveEntryPath(importedFiles, packageJson);
+  const entryPath = resolveEntryPath(rewrittenFiles, packageJson);
   if (!entryPath) {
     throw new Error('Failed to detect app entry file.');
   }
-  const entryFile = importedFiles.find((file) => file.path === entryPath);
+  const entryFile = rewrittenFiles.find((file) => file.path === entryPath);
   if (!entryFile) {
     throw new Error('Detected entry file is missing from selected files.');
   }
 
   const packageDeps = collectPackageDeps(packageJson);
-  const sourceConcat = importedFiles
+  const sourceConcat = rewrittenFiles
     .filter((file) => ['js', 'jsx', 'ts', 'tsx'].includes(file.fileExtension))
     .map((file) => file.content)
     .join('\n\n');
   for (const dep of extractUiDependencies(sourceConcat)) {
-    if (!BUILTIN_DEPS.has(dep)) packageDeps.add(dep);
+    if (!UI_BUILTIN_DEPENDENCIES.has(dep)) packageDeps.add(dep);
   }
 
   const suggestedName = normalizeUiEntityName(
@@ -243,7 +316,7 @@ export const importReactAppFromDirectory = async (
     dependencies,
     fileExtension,
   } as SharedProjectDto;
-  const files = importedFiles.map((file) => ({
+  const files = rewrittenFiles.map((file) => ({
     id: file.path,
     path: file.path,
     fileExtension: file.fileExtension,
@@ -259,6 +332,11 @@ export const importReactAppFromDirectory = async (
     fileExtension,
     dependencies,
     codeBlob,
-    fileCount: importedFiles.length,
+    fileCount: rewrittenFiles.length,
+    files: rewrittenFiles.map((file) => ({
+      path: file.path,
+      fileExtension: file.fileExtension,
+      content: file.content,
+    })),
   };
 };

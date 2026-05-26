@@ -4,6 +4,7 @@ import { ClosePromptModal } from '@/components/editor/modals/ClosePromptModal';
 import { EditItemModal } from '@/components/editor/modals/EditItemModal';
 import { RenameFolderModal } from '@/components/editor/modals/RenameFolderModal';
 import { DeleteConfirmModal } from '@/components/editor/modals/DeleteConfirmModal';
+import { ImportReactAppModal } from '@/components/editor/modals/ImportReactAppModal';
 import type {
   ActiveFile,
   DeleteTarget,
@@ -15,6 +16,7 @@ import type {
   SharedFileFormState,
   UiFormState,
 } from '@/components/editor/types';
+import type { ImportedReactAppPayload } from '@/components/editor/utils/importReactApp';
 
 type EditorModalsProps = {
   createModalOpen: boolean;
@@ -60,6 +62,19 @@ type EditorModalsProps = {
   deleteTarget: DeleteTarget | null;
   onCloseDelete: () => void;
   onDeleteSubmit: () => void;
+  importModalOpen: boolean;
+  importBusy: boolean;
+  importPayload: ImportedReactAppPayload | null;
+  importPackageName: string;
+  importPackageVersion: string;
+  importDependenciesInput: string;
+  importErrorMessage: string;
+  onPickImportFiles: (files: FileList | null) => void;
+  onImportPackageNameChange: (value: string) => void;
+  onImportPackageVersionChange: (value: string) => void;
+  onImportDependenciesChange: (value: string) => void;
+  onCloseImport: () => void;
+  onSubmitImport: () => void;
 };
 
 export function EditorModals(props: EditorModalsProps) {
@@ -121,6 +136,22 @@ export function EditorModals(props: EditorModalsProps) {
         deleteTarget={props.deleteTarget}
         onClose={props.onCloseDelete}
         onSubmit={props.onDeleteSubmit}
+      />
+
+      <ImportReactAppModal
+        open={props.importModalOpen}
+        busy={props.importBusy}
+        payload={props.importPayload}
+        packageName={props.importPackageName}
+        packageVersion={props.importPackageVersion}
+        dependenciesInput={props.importDependenciesInput}
+        errorMessage={props.importErrorMessage}
+        onPickFiles={props.onPickImportFiles}
+        onNameChange={props.onImportPackageNameChange}
+        onVersionChange={props.onImportPackageVersionChange}
+        onDependenciesChange={props.onImportDependenciesChange}
+        onClose={props.onCloseImport}
+        onImport={props.onSubmitImport}
       />
     </>
   );

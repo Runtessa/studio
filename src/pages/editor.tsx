@@ -37,6 +37,11 @@ import { EditorTabContextMenu } from '@/components/editor/EditorTabContextMenu';
 import { EditorWorkspace } from '@/components/editor/EditorWorkspace';
 import { EditorModals } from '@/components/editor/EditorModals';
 import {
+  importReactAppFromDirectory,
+  normalizeImportedDraftPath,
+  type ImportedReactAppPayload,
+} from '@/components/editor/utils/importReactApp';
+import {
   ASSISTANT_PANEL_OPEN_STORAGE_KEY,
   ASSISTANT_PANEL_WIDTH_STORAGE_KEY,
   DEFAULT_ASSISTANT_PANEL_WIDTH,
@@ -66,11 +71,13 @@ import {
   SPLIT_RATIO_STORAGE_KEY,
 } from '@/components/editor/constants';
 import {
+  buildSharedBundle,
   buildExplorerTree,
   buildPersistedContentMap,
   buildSearchPattern,
   buildSharedContentMap,
   buildSharedTree,
+  coerceUiExtension,
   detectLanguage,
   escapeRegExp,
   findPathById,
@@ -78,7 +85,9 @@ import {
   getFileIdFromUriPath,
   getRevisionContent,
   normalizeSharedPath,
+  parseDependencies,
   replaceAtRange,
+  UI_BUILTIN_DEPENDENCIES,
 } from '@/components/editor/utils';
 import type {
   AssistantDiffPreview,
@@ -115,6 +124,18 @@ const CORE_API_BASE = process.env.NEXT_PUBLIC_CORE_API_URL?.trim() || '';
 const PREVIEW_EXCEPTION_BATCH_DELAY_MS = 800;
 const PREVIEW_EXCEPTION_DEDUPE_MS = 3000;
 const PREVIEW_EXCEPTION_MAX_QUEUE = 40;
+const basename = (pathValue: string) => {
+  const normalized = normalizeImportedDraftPath(pathValue);
+  const parts = normalized.split('/').filter(Boolean);
+  return parts[parts.length - 1] || normalized || 'file';
+};
+
+const toImportedUiEntityName = (basePackageName: string, filePath: string) => {
+  const normalizedBase = String(basePackageName || '').trim().replace(/\/+$/, '');
+  const normalizedPath = normalizeImportedDraftPath(filePath);
+  const withoutExt = normalizedPath.replace(/\.[^./]+$/, '');
+  return `${normalizedBase}/${withoutExt}`;
+};
 
 const normalizePreviewRouteValue = (value: string) => {
   const raw = String(value || '').trim();
@@ -254,6 +275,13 @@ export default function EditorPage() {
   const [renameFolderName, setRenameFolderName] = useState('');
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
+  const [importModalOpen, setImportModalOpen] = useState(false);
+  const [importBusy, setImportBusy] = useState(false);
+  const [importPayload, setImportPayload] = useState<ImportedReactAppPayload | null>(null);
+  const [importPackageName, setImportPackageName] = useState('');
+  const [importPackageVersion, setImportPackageVersion] = useState('');
+  const [importDependenciesInput, setImportDependenciesInput] = useState('');
+  const [importErrorMessage, setImportErrorMessage] = useState('');
   const [leftPanelOpen, setLeftPanelOpen] = useState(true);
   const [leftPanelWidth, setLeftPanelWidth] = useState(() => {
     if (typeof window === 'undefined') return DEFAULT_LEFT_PANEL_WIDTH;
@@ -937,7 +965,10 @@ export default function EditorPage() {
       prev
         .map((file) => {
           const node = nodeMap.get(file.id);
-          if (!node || node.type !== 'file') return null;
+          if (!node || node.type !== 'file') {
+            if (file.meta?.kind === 'ui' && file.meta.draftId) return file;
+            return null;
+          }
           const meta = (node.meta as NodeMeta | undefined) ?? null;
           const language = detectLanguage(node.name);
           return { ...file, name: node.name, language, meta };
@@ -948,7 +979,10 @@ export default function EditorPage() {
     setActiveFile((prev) => {
       if (!prev) return prev;
       const node = nodeMap.get(prev.id);
-      if (!node || node.type !== 'file') return null;
+      if (!node || node.type !== 'file') {
+        if (prev.meta?.kind === 'ui' && prev.meta.draftId) return prev;
+        return null;
+      }
       const meta = (node.meta as NodeMeta | undefined) ?? null;
       const language = detectLanguage(node.name);
       return { ...prev, name: node.name, language, meta };
@@ -1415,11 +1449,14 @@ export default function EditorPage() {
     setSavedContents,
     aclConfig,
     setAclConfig,
+    uiData,
     setUiData,
     reloadTree,
     loadHistory: () => loadHistory(),
     activeFile,
     openFiles,
+    setActiveFile,
+    setOpenFiles,
     isFileDirty,
     success,
     showError,
@@ -1837,6 +1874,200 @@ export default function EditorPage() {
     setSavedContents,
   });
 
+  const closeImportModal = useCallback(() => {
+    setImportModalOpen(false);
+    setImportBusy(false);
+    setImportPayload(null);
+    setImportPackageName('');
+    setImportPackageVersion('');
+    setImportDependenciesInput('');
+    setImportErrorMessage('');
+  }, []);
+
+  const openImportModal = useCallback(() => {
+    if (isSharedMode) {
+      showError('Import is available only in tenant UI mode.');
+      return;
+    }
+    setImportModalOpen(true);
+    setImportBusy(false);
+    setImportPayload(null);
+    setImportPackageName('');
+    setImportPackageVersion('');
+    setImportDependenciesInput('');
+    setImportErrorMessage('');
+  }, [isSharedMode, showError]);
+
+  const handlePickImportFiles = useCallback(async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    setImportBusy(true);
+    setImportErrorMessage('');
+    try {
+      const payload = await importReactAppFromDirectory(files);
+      setImportPayload(payload);
+      setImportPackageName(payload.suggestedName);
+      setImportPackageVersion(payload.suggestedVersion);
+      setImportDependenciesInput(payload.dependencies.join(', '));
+    } catch (err) {
+      const message = (err as Error).message || 'Failed to analyze selected app folder';
+      setImportPayload(null);
+      setImportDependenciesInput('');
+      setImportErrorMessage(message);
+      showError(message);
+    } finally {
+      setImportBusy(false);
+    }
+  }, [showError]);
+
+  const handleSubmitImport = useCallback(async () => {
+    if (!importPayload) {
+      setImportErrorMessage('Select app folder first.');
+      return;
+    }
+    const packageName = importPackageName.trim();
+    const packageVersion = importPackageVersion.trim();
+    if (!packageName || !packageVersion) {
+      setImportErrorMessage('Package name and version are required.');
+      return;
+    }
+
+    const dependencies = Array.from(
+      new Set(
+        parseDependencies(importDependenciesInput).filter(
+          (dep) => dep && !UI_BUILTIN_DEPENDENCIES.has(dep),
+        ),
+      ),
+    ).sort((a, b) => a.localeCompare(b));
+    const normalizedEntry = normalizeImportedDraftPath(importPayload.entryPath);
+    const sortedFiles = [...importPayload.files].sort((a, b) => {
+      const aPath = normalizeImportedDraftPath(a.path);
+      const bPath = normalizeImportedDraftPath(b.path);
+      if (aPath === normalizedEntry) return -1;
+      if (bPath === normalizedEntry) return 1;
+      return aPath.localeCompare(bPath);
+    });
+    setImportBusy(true);
+    setImportErrorMessage('');
+    try {
+      const existingByKey = new Map<string, UIPackageDto>();
+      uiData.forEach((pkg) => {
+        existingByKey.set(`${pkg.name}@@${pkg.version}`, pkg);
+      });
+
+      const savedFiles: Array<{
+        path: string;
+        pkg: UIPackageDto;
+      }> = [];
+
+      for (const file of sortedFiles) {
+        const normalizedPath = normalizeImportedDraftPath(file.path);
+        const ext = coerceUiExtension((normalizedPath.split('.').pop() || file.fileExtension).toLowerCase());
+        const isEntry = normalizedPath === normalizedEntry;
+        const entityName = toImportedUiEntityName(packageName, normalizedPath);
+        const key = `${entityName}@@${packageVersion}`;
+        const existing = existingByKey.get(key);
+        const fallbackBundle = buildSharedBundle(
+          {
+            id: '__import-file__',
+            name: entityName,
+            version: packageVersion,
+            entryPath: normalizedPath,
+            dependencies: [],
+            fileExtension: ext,
+          },
+          sortedFiles.map((sourceFile) => ({
+            id: normalizeImportedDraftPath(sourceFile.path),
+            path: normalizeImportedDraftPath(sourceFile.path),
+            fileExtension: sourceFile.fileExtension,
+            content: sourceFile.content,
+          })),
+        );
+        const requestBody = {
+          name: entityName,
+          version: packageVersion,
+          code: file.content,
+          codeBlob: isEntry ? importPayload.codeBlob : fallbackBundle,
+          dependencies: isEntry ? dependencies : [],
+          fileExtension: ext,
+        };
+        const saved = existing
+          ? ((await apiFetch(`/api/ui-entities/${existing.id}`, {
+              method: 'PUT',
+              body: requestBody,
+            })) as UIPackageDto)
+          : ((await apiFetch('/api/ui-entities', {
+              method: 'POST',
+              body: requestBody,
+            })) as UIPackageDto);
+        existingByKey.set(key, saved);
+        savedFiles.push({ path: normalizedPath, pkg: saved });
+      }
+
+      const savedContentUpdates: Record<string, string> = {};
+      const fileContentUpdates: Record<string, string> = {};
+      const openedFiles: ActiveFile[] = savedFiles.map(({ path, pkg }) => {
+        const fileId = `ui-${pkg.id}`;
+        const fileContent = sortedFiles.find((file) => normalizeImportedDraftPath(file.path) === path)?.content ?? pkg.code ?? '';
+        savedContentUpdates[fileId] = fileContent;
+        fileContentUpdates[fileId] = fileContent;
+        return {
+          id: fileId,
+          name: path,
+          language: detectLanguage(basename(path)),
+          meta: {
+            kind: 'ui',
+            backendId: pkg.id,
+            name: pkg.name,
+            version: pkg.version,
+            dependencies: pkg.dependencies ?? [],
+            fileExtension: pkg.fileExtension,
+          },
+        };
+      });
+
+      setSavedContents((prev) => ({ ...prev, ...savedContentUpdates }));
+      setFileContents((prev) => ({ ...prev, ...fileContentUpdates }));
+      setUiData(Array.from(existingByKey.values()));
+      setOpenFiles((prev) => {
+        const keep = prev.filter((file) => !savedFiles.some(({ pkg }) => file.id === `ui-${pkg.id}`));
+        return [...keep, ...openedFiles];
+      });
+      const entryPackage = savedFiles.find(({ path }) => path === normalizedEntry)?.pkg ?? savedFiles[0]?.pkg;
+      if (entryPackage) {
+        const entryFileId = `ui-${entryPackage.id}`;
+        const entryTab = openedFiles.find((file) => file.id === entryFileId) ?? null;
+        setActiveFile(entryTab);
+        setPreviewTarget({
+          kind: 'ui',
+          name: entryPackage.name,
+          version: entryPackage.version,
+        });
+      }
+      await reloadTree();
+      setEditorView('code');
+      closeImportModal();
+      success(`Imported and saved ${savedFiles.length} files to UI Entities.`);
+    } catch (err) {
+      const message = (err as Error).message || 'Failed to import and save app files.';
+      setImportErrorMessage(message);
+      showError(message);
+    } finally {
+      setImportBusy(false);
+    }
+  }, [
+    apiFetch,
+    closeImportModal,
+    importDependenciesInput,
+    importPackageName,
+    importPackageVersion,
+    importPayload,
+    reloadTree,
+    showError,
+    uiData,
+    setPreviewTarget,
+    success,
+  ]);
+
   const {
     handleSwitchToPreview,
     handleRefreshPreview,
@@ -1866,6 +2097,7 @@ export default function EditorPage() {
         <EditorHeader
           branding={branding}
           editorView={editorView}
+          isSharedMode={isSharedMode}
           previewPort={previewPort}
           previewRouteInput={previewRouteInput}
           previewStage={previewStage}
@@ -1885,6 +2117,7 @@ export default function EditorPage() {
           onSwitchToCode={() => setEditorView('code')}
           onSwitchToPreview={handleSwitchToPreview}
           onRefreshPreview={handleRefreshPreview}
+          onOpenImportReactApp={openImportModal}
         />
 
         <div className="flex flex-1 min-h-0">
@@ -2174,6 +2407,19 @@ export default function EditorPage() {
         deleteTarget={deleteTarget}
         onCloseDelete={closeDeleteModal}
         onDeleteSubmit={handleDeleteSubmit}
+        importModalOpen={importModalOpen}
+        importBusy={importBusy}
+        importPayload={importPayload}
+        importPackageName={importPackageName}
+        importPackageVersion={importPackageVersion}
+        importDependenciesInput={importDependenciesInput}
+        importErrorMessage={importErrorMessage}
+        onPickImportFiles={handlePickImportFiles}
+        onImportPackageNameChange={setImportPackageName}
+        onImportPackageVersionChange={setImportPackageVersion}
+        onImportDependenciesChange={setImportDependenciesInput}
+        onCloseImport={closeImportModal}
+        onSubmitImport={handleSubmitImport}
       />
 
       <style jsx global>{`

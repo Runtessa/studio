@@ -7,13 +7,19 @@ export const parseDependencies = (value: string) =>
     .map((item) => item.trim())
     .filter(Boolean);
 
-const UI_DEPENDENCY_EXCLUDES = new Set([
+export const UI_BUILTIN_DEPENDENCIES = new Set([
   'react',
   'react-dom',
   'react-dom/client',
   'react/jsx-runtime',
   'react/jsx-dev-runtime',
+  'tailwindcss',
+  'postcss',
+  'autoprefixer',
+  '@tailwindcss/postcss',
+  '@tailwindcss/vite',
 ]);
+export const UI_INTERNAL_IMPORT_PREFIX = '@appp/';
 
 const isBareImport = (value: string) => {
   const trimmed = value.trim();
@@ -27,7 +33,8 @@ export const extractUiDependencies = (source: string) => {
   const addDep = (value: string) => {
     const trimmed = value.trim();
     if (!trimmed || !isBareImport(trimmed)) return;
-    if (UI_DEPENDENCY_EXCLUDES.has(trimmed)) return;
+    if (trimmed.startsWith(UI_INTERNAL_IMPORT_PREFIX)) return;
+    if (UI_BUILTIN_DEPENDENCIES.has(trimmed)) return;
     if (seen.has(trimmed)) return;
     seen.add(trimmed);
     results.push(trimmed);
@@ -49,22 +56,37 @@ export const extractUiDependencies = (source: string) => {
   return results;
 };
 
-export const compileWithBabel = (code: string): string => {
+type CompileOptions = {
+  isTypeScript?: boolean;
+  isTsx?: boolean;
+};
+
+export const compileWithBabel = (code: string, options: CompileOptions = {}): string => {
   const babel = typeof window !== 'undefined' ? (window as any).Babel : undefined;
   if (!babel || !babel.transform) return code;
   try {
+    const isTypeScript = Boolean(options.isTypeScript);
+    const isTsx = Boolean(options.isTsx);
+    const presets: any[] = ['es2015'];
+    if (isTypeScript) {
+      presets.push([
+        'typescript',
+        {
+          allExtensions: true,
+          isTSX: isTsx,
+        },
+      ]);
+    }
+    presets.push('react');
+    presets.push([
+      'env',
+      {
+        useBuiltIns: 'entry',
+        corejs: 3,
+      },
+    ]);
     const result = babel.transform(code, {
-      presets: [
-        'es2015',
-        'react',
-        [
-          'env',
-          {
-            useBuiltIns: 'entry',
-            corejs: 3,
-          },
-        ],
-      ],
+      presets,
     });
     return result?.code ?? code;
   } catch (er) {
@@ -110,7 +132,11 @@ export const buildSharedBundle = (project: SharedProjectDto, files: SharedFileDt
       if (typeof window !== 'undefined' && !(window as any).Babel) {
         throw new Error('Babel runtime not loaded in browser; cannot build bundle.');
       }
-      compiled = compileWithBabel(source);
+      const isTs = ext === 'ts' || ext === 'tsx';
+      compiled = compileWithBabel(source, {
+        isTypeScript: isTs,
+        isTsx: ext === 'tsx',
+      });
     }
     moduleEntries.push(
       `${JSON.stringify(normalizedPath)}: function(module, exports, require, __filename, __dirname) {\n${compiled}\n}`,
@@ -124,6 +150,7 @@ export const buildSharedBundle = (project: SharedProjectDto, files: SharedFileDt
     '};',
     'const __cache = {};',
     "const __extensions = ['.jsx', '.js', '.json', '.css'];",
+    `const __internalPrefix = ${JSON.stringify(UI_INTERNAL_IMPORT_PREFIX)};`,
     'const __externalRequire = require;',
     'const __normalize = (value) => {',
     "  const parts = String(value || '').split('/').filter(Boolean);",
@@ -137,6 +164,15 @@ export const buildSharedBundle = (project: SharedProjectDto, files: SharedFileDt
     '};',
     'const __resolve = (request, from) => {',
     "  const raw = String(request || '');",
+    '  if (raw.startsWith(__internalPrefix)) {',
+    '    const internalRaw = raw.slice(__internalPrefix.length);',
+    '    const internal = __normalize(internalRaw);',
+    '    if (__modules[internal]) return internal;',
+    '    for (const ext of __extensions) {',
+    '      if (__modules[internal + ext]) return internal + ext;',
+    '    }',
+    '    return internal;',
+    '  }',
     '  const normalizedBare = __normalize(raw);',
     '  if (__modules[normalizedBare]) return normalizedBare;',
     '  for (const ext of __extensions) {',
@@ -157,7 +193,7 @@ export const buildSharedBundle = (project: SharedProjectDto, files: SharedFileDt
     '  const resolved = __resolve(raw, from || "");',
     '  const factory = __modules[resolved];',
     '  if (!factory) {',
-    "    if (!raw.startsWith('.') && !raw.startsWith('/')) {",
+    "    if (!raw.startsWith('.') && !raw.startsWith('/') && !raw.startsWith(__internalPrefix)) {",
     '      return __externalRequire(raw);',
     '    }',
     "    throw new Error('Cannot find module ' + raw);",

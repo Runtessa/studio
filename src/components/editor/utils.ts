@@ -37,6 +37,8 @@ export {
 
 export {
   parseDependencies,
+  UI_BUILTIN_DEPENDENCIES,
+  UI_INTERNAL_IMPORT_PREFIX,
   extractUiDependencies,
   compileWithBabel,
   buildCssModuleSource,

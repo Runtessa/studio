@@ -4,6 +4,7 @@ import Link from 'next/link';
 type EditorHeaderProps = {
   branding: { logo_lm: string; brand_name: string };
   editorView: 'code' | 'preview';
+  isSharedMode: boolean;
   previewPort: string;
   previewRouteInput: string;
   previewStage: 'draft' | 'published';
@@ -18,11 +19,13 @@ type EditorHeaderProps = {
   onSwitchToCode: () => void;
   onSwitchToPreview: () => void;
   onRefreshPreview: () => void;
+  onOpenImportReactApp: () => void;
 };
 
 export function EditorHeader({
   branding,
   editorView,
+  isSharedMode,
   previewPort,
   previewRouteInput,
   previewStage,
@@ -37,6 +40,7 @@ export function EditorHeader({
   onSwitchToCode,
   onSwitchToPreview,
   onRefreshPreview,
+  onOpenImportReactApp,
 }: EditorHeaderProps) {
   return (
     <header className="relative flex h-[34px] items-center border-b border-[#2a2d2e] bg-[#252526] px-2">
@@ -60,6 +64,16 @@ export function EditorHeader({
       </div>
 
       <div className="ml-auto flex items-center gap-2 text-[11px]">
+        {!isSharedMode && (
+          <button
+            type="button"
+            onClick={onOpenImportReactApp}
+            className="h-6 rounded border border-[#2a2d2e] bg-[#1b1b1b] px-2 text-[10px] font-semibold uppercase tracking-wide text-gray-200 hover:bg-[#2a2d2e]"
+            title="Import existing React app into current tenant"
+          >
+            Import App
+          </button>
+        )}
         {editorView === 'preview' && (
           <div className="flex items-center gap-2 rounded-full border border-[#2a2d2e] bg-[#1f1f1f] px-2 py-0.5 text-[10px] text-gray-400">
             <span className="uppercase tracking-[0.2em]">Port</span>

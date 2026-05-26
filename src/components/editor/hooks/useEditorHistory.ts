@@ -67,7 +67,8 @@ export const useEditorHistory = ({
       if (
         activeFile.meta.kind === 'shared' ||
         activeFile.meta.kind === 'acl' ||
-        activeFile.meta.kind === 'model'
+        activeFile.meta.kind === 'model' ||
+        (activeFile.meta.kind === 'ui' && !activeFile.meta.backendId)
       ) {
         setHistoryItems([]);
         setHistoryError('History is not available for this file.');

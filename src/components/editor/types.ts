@@ -199,11 +199,19 @@ export type NodeMeta =
     }
   | {
       kind: 'ui';
-      backendId: string;
+      backendId?: string;
       name: string;
       version: string;
       dependencies: string[];
       fileExtension?: string;
+      draftId?: string;
+      draftFilePath?: string;
+      entryPath?: string;
+      importedFiles?: Array<{
+        path: string;
+        fileExtension: string;
+        content: string;
+      }>;
     }
   | {
       kind: 'shared';
