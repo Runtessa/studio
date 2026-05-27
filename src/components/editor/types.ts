@@ -49,6 +49,10 @@ export type ModuleDto = {
   fileExtension?: string;
   draftVersion?: string;
   publishedVersion?: string;
+  publishedRoutePath?: string;
+  publishedMethod?: string;
+  publishedCode?: string;
+  publishedFileExtension?: string;
   publishedAt?: string;
 };
 
@@ -62,6 +66,10 @@ export type UIPackageDto = {
   fileExtension?: string;
   draftVersion?: string;
   publishedVersion?: string;
+  publishedCode?: string;
+  publishedCodeBlob?: string;
+  publishedDependencies?: string[];
+  publishedFileExtension?: string;
   publishedAt?: string;
 };
 

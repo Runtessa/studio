@@ -152,6 +152,23 @@ const normalizePreviewRouteValue = (value: string) => {
   return raw.startsWith('/') ? raw : `/${raw}`;
 };
 
+const normalizeExtensionValue = (value: string | undefined, fallback: string) =>
+  String(value ?? fallback)
+    .replace(/^\./, '')
+    .toLowerCase();
+
+const normalizeDependencyList = (value: string[] | undefined) =>
+  Array.from(
+    new Set(
+      (value ?? [])
+        .map((dep) => String(dep || '').trim())
+        .filter(Boolean),
+    ),
+  ).sort((a, b) => a.localeCompare(b));
+
+const dependencyListsEqual = (left: string[], right: string[]) =>
+  left.length === right.length && left.every((value, index) => value === right[index]);
+
 declare global {
   interface Window {
     Babel?: {
@@ -1313,6 +1330,20 @@ export default function EditorPage() {
     const items: StagingItem[] = [];
     modulesData.forEach((mod) => {
       const fileId = `module-${mod.id}`;
+      const draftExt = normalizeExtensionValue(mod.fileExtension, MODULE_EXTENSION);
+      const publishedExt = normalizeExtensionValue(
+        mod.publishedFileExtension ?? mod.fileExtension,
+        MODULE_EXTENSION
+      );
+      const hasUnpublishedChanges = !mod.publishedVersion
+        ? true
+        : (mod.routePath ?? '') !== (mod.publishedRoutePath ?? mod.routePath ?? '') ||
+          String(mod.method ?? '').toUpperCase() !==
+            String(mod.publishedMethod ?? mod.method ?? '').toUpperCase() ||
+          (mod.code ?? '') !== (mod.publishedCode ?? mod.code ?? '') ||
+          draftExt !== publishedExt;
+      const dirty = dirtyFileIds.has(fileId);
+      if (!hasUnpublishedChanges && !dirty) return;
       items.push({
         id: fileId,
         kind: 'module',
@@ -1322,11 +1353,28 @@ export default function EditorPage() {
         publishedAt: mod.publishedAt,
         backendId: mod.id,
         fileId,
-        dirty: dirtyFileIds.has(fileId),
+        dirty,
       });
     });
     uiData.forEach((pkg) => {
       const fileId = `ui-${pkg.id}`;
+      const draftExt = normalizeExtensionValue(pkg.fileExtension, DEFAULT_UI_EXTENSION);
+      const publishedExt = normalizeExtensionValue(
+        pkg.publishedFileExtension ?? pkg.fileExtension,
+        DEFAULT_UI_EXTENSION
+      );
+      const draftDeps = normalizeDependencyList(pkg.dependencies);
+      const publishedDeps = normalizeDependencyList(
+        pkg.publishedDependencies ?? pkg.dependencies
+      );
+      const hasUnpublishedChanges = !pkg.publishedVersion
+        ? true
+        : (pkg.code ?? '') !== (pkg.publishedCode ?? pkg.code ?? '') ||
+          (pkg.codeBlob ?? '') !== (pkg.publishedCodeBlob ?? pkg.codeBlob ?? '') ||
+          draftExt !== publishedExt ||
+          !dependencyListsEqual(draftDeps, publishedDeps);
+      const dirty = dirtyFileIds.has(fileId);
+      if (!hasUnpublishedChanges && !dirty) return;
       items.push({
         id: fileId,
         kind: 'ui',
@@ -1336,7 +1384,7 @@ export default function EditorPage() {
         publishedAt: pkg.publishedAt,
         backendId: pkg.id,
         fileId,
-        dirty: dirtyFileIds.has(fileId),
+        dirty,
       });
     });
     if (isSharedMode && sharedProject) {

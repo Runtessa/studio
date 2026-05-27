@@ -87,6 +87,13 @@ const serialize = (pkg: UIPackage) => ({
   fileExtension: pkg.fileExtension,
   draftVersion: pkg.draftVersion,
   publishedVersion: pkg.publishedVersion ?? undefined,
+  publishedCode: pkg.publishedCode ?? undefined,
+  publishedCodeBlob: pkg.publishedCodeBlob ?? undefined,
+  publishedDependencies: stripTailwindDependency(
+    pkg.publishedDependencies ?? [],
+    getTailwindPackageName(pkg.name)
+  ),
+  publishedFileExtension: pkg.publishedFileExtension ?? undefined,
   publishedAt: pkg.publishedAt ?? undefined,
   createdAt: pkg.createdAt,
   updatedAt: pkg.updatedAt,

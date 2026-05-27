@@ -42,6 +42,9 @@ export function EditorHeader({
   onRefreshPreview,
   onOpenImportReactApp,
 }: EditorHeaderProps) {
+  const headerActionButtonClass =
+    'h-5 rounded-full border border-[#2a2d2e] bg-[#1b1b1b] px-2.5 text-[10px] text-gray-200 transition hover:bg-[#2a2d2e]';
+
   return (
     <header className="relative flex h-[34px] items-center border-b border-[#2a2d2e] bg-[#252526] px-2">
       <div className="flex items-center gap-4">
@@ -68,7 +71,7 @@ export function EditorHeader({
           <button
             type="button"
             onClick={onOpenImportReactApp}
-            className="h-6 rounded border border-[#2a2d2e] bg-[#1b1b1b] px-2 text-[10px] font-semibold uppercase tracking-wide text-gray-200 hover:bg-[#2a2d2e]"
+            className={`${headerActionButtonClass} font-semibold uppercase tracking-wide`}
             title="Import existing React app into current tenant"
           >
             Import App
@@ -114,7 +117,7 @@ export function EditorHeader({
             <button
               type="button"
               onClick={onApplyPreviewRoute}
-              className="h-5 rounded border border-[#2a2d2e] bg-[#1b1b1b] px-2 text-[10px] text-gray-200 hover:bg-[#2a2d2e]"
+              className={headerActionButtonClass}
               title="Apply preview route"
             >
               Go
@@ -122,7 +125,7 @@ export function EditorHeader({
             <button
               type="button"
               onClick={onResetPreviewRoute}
-              className="h-5 rounded border border-[#2a2d2e] bg-[#1b1b1b] px-2 text-[10px] text-gray-200 hover:bg-[#2a2d2e]"
+              className={headerActionButtonClass}
               title="Reset preview route to /"
             >
               Reset
@@ -130,7 +133,7 @@ export function EditorHeader({
             <button
               type="button"
               onClick={onRefreshPreview}
-              className="h-5 rounded border border-[#2a2d2e] bg-[#1b1b1b] px-2 text-[10px] text-gray-200 hover:bg-[#2a2d2e]"
+              className={headerActionButtonClass}
               title="Refresh preview"
             >
               Refresh
@@ -138,7 +141,7 @@ export function EditorHeader({
             <button
               type="button"
               onClick={onTogglePreviewInspect}
-              className={`h-5 rounded border px-2 text-[10px] ${
+              className={`h-5 rounded-full border px-2.5 text-[10px] ${
                 previewInspectOpen
                   ? 'border-[#0b5b96] bg-[#0b5b96] text-white'
                   : 'border-[#2a2d2e] bg-[#1b1b1b] text-gray-200 hover:bg-[#2a2d2e]'
