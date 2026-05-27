@@ -312,6 +312,10 @@ export const useEditorSaveActions = ({
                 meta: {
                   ...item.meta,
                   backendId: createdPackage.id,
+                  name: createdPackage.name,
+                  version: createdPackage.version,
+                  dependencies,
+                  fileExtension: createdPackage.fileExtension,
                 },
               };
             }),
@@ -349,6 +353,18 @@ export const useEditorSaveActions = ({
           prev.map((pkg) =>
             pkg.id === meta.backendId ? { ...pkg, dependencies } : pkg,
           ),
+        );
+        setOpenFiles((prev) =>
+          prev.map((item) => {
+            if (item.id !== file.id || item.meta?.kind !== 'ui') return item;
+            return {
+              ...item,
+              meta: {
+                ...item.meta,
+                dependencies,
+              },
+            };
+          }),
         );
       }
       setSavedContents((prev) => ({ ...prev, [file.id]: content }));

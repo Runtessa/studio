@@ -21,31 +21,6 @@ export const UI_BUILTIN_DEPENDENCIES = new Set([
 ]);
 export const UI_INTERNAL_IMPORT_PREFIX = '@app/';
 const UI_INTERNAL_IMPORT_PREFIX_LEGACY = '@appp/';
-const UI_INTERNAL_PATH_ROOT_HINTS = new Set([
-  'src',
-  'app',
-  'components',
-  'pages',
-  'lib',
-  'utils',
-  'styles',
-  'assets',
-  'hooks',
-  'context',
-  'router',
-  'index',
-]);
-
-const isInternalVirtualImport = (value: string) => {
-  const trimmed = String(value || '').trim();
-  if (!trimmed.startsWith('@app/')) return false;
-  const parts = trimmed.split('/').filter(Boolean);
-  if (parts.length < 2) return false;
-  // @app/<package> should be treated as a real dependency.
-  // Path-like imports such as @app/src/... are IDE-internal rewritten paths.
-  const firstSegment = parts[1] || '';
-  return parts.length > 2 && UI_INTERNAL_PATH_ROOT_HINTS.has(firstSegment);
-};
 
 const isBareImport = (value: string) => {
   const trimmed = value.trim();
@@ -57,10 +32,10 @@ export const extractUiDependencies = (source: string) => {
   const results: string[] = [];
   const seen = new Set<string>();
   const addDep = (value: string) => {
-    const trimmed = value.trim();
+    let trimmed = value.trim();
     if (!trimmed || !isBareImport(trimmed)) return;
-    if (trimmed.startsWith(UI_INTERNAL_IMPORT_PREFIX_LEGACY) || isInternalVirtualImport(trimmed)) {
-      return;
+    if (trimmed.startsWith(UI_INTERNAL_IMPORT_PREFIX_LEGACY)) {
+      trimmed = `${UI_INTERNAL_IMPORT_PREFIX}${trimmed.slice(UI_INTERNAL_IMPORT_PREFIX_LEGACY.length)}`;
     }
     if (UI_BUILTIN_DEPENDENCIES.has(trimmed)) return;
     if (seen.has(trimmed)) return;

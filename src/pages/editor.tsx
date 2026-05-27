@@ -1659,7 +1659,9 @@ export default function EditorPage() {
     );
     const base = previewBaseUrl.replace(/\/$/, '');
     const session = encodeURIComponent(previewSession);
-    return `${base}/preview.html?name=${name}&version=${version}&tenantHost=${tenant}&previewSession=${session}&stage=${stage}&t=${previewNonce}`;
+    const kernelMode =
+      process.env.NODE_ENV !== 'production' ? '&kernelMode=source' : '';
+    return `${base}/preview.html?name=${name}&version=${version}&tenantHost=${tenant}&previewSession=${session}&stage=${stage}&t=${previewNonce}${kernelMode}`;
   }, [previewBaseUrl, previewNonce, previewSession, previewStage, previewTarget, tenantHost]);
 
   const previewSrc = autoPreviewSrc;
