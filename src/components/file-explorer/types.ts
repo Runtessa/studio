@@ -16,6 +16,7 @@ export type DropPosition = "inside" | "before" | "after";
 export type FileExplorerProps = {
   onOpenFile?: (file: ExplorerNode) => void;
   initialTree?: ExplorerNode;
+  selectedNodeId?: string | null;
   readOnly?: boolean;
   onCreateNode?: (context: {
     type: "file" | "folder";

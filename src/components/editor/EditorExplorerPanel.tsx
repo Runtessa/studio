@@ -4,6 +4,7 @@ type ExplorerPanelProps = {
   treeError: string;
   loadingTree: boolean;
   treeData: ExplorerNode | null;
+  selectedNodeId?: string | null;
   onReload: () => void;
   onOpenFile: (file: ExplorerNode) => void;
   onCreateNode: (args: { type: 'file' | 'folder'; parentPath: ExplorerNode[] }) => boolean | void;
@@ -23,6 +24,7 @@ export function EditorExplorerPanel({
   treeError,
   loadingTree,
   treeData,
+  selectedNodeId,
   onReload,
   onOpenFile,
   onCreateNode,
@@ -86,6 +88,7 @@ export function EditorExplorerPanel({
           key={treeData.id}
           onOpenFile={onOpenFile}
           initialTree={treeData}
+          selectedNodeId={selectedNodeId}
           onCreateNode={onCreateNode}
           onRenameNode={onRenameNode}
           onDeleteNode={onDeleteNode}

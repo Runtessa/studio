@@ -2154,6 +2154,7 @@ export default function EditorPage() {
                   treeError={treeError}
                   loadingTree={loadingTree}
                   treeData={treeData}
+                  selectedNodeId={activeFile?.id ?? null}
                   onReload={reloadTree}
                   onOpenFile={handleOpenFile}
                   onCreateNode={handleCreateRequest}

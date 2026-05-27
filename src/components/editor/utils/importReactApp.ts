@@ -100,7 +100,8 @@ const rewriteModuleSpecifier = (specifier: string, fromFilePath: string) => {
   if (!trimmed) return specifier;
   if (!(trimmed.startsWith('./') || trimmed.startsWith('../'))) return specifier;
   const absolutePath = resolveRelativePath(fromFilePath, trimmed);
-  return `${UI_INTERNAL_IMPORT_PREFIX}${absolutePath}`;
+  const normalized = absolutePath.replace(/\.(css|js|jsx|ts|tsx|json)$/i, '');
+  return `${UI_INTERNAL_IMPORT_PREFIX}${normalized}`;
 };
 
 const rewriteSourceImports = (source: string, fromFilePath: string) => {

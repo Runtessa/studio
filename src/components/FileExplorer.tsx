@@ -41,6 +41,7 @@ export {
 export default function FileExplorer({
   onOpenFile,
   initialTree,
+  selectedNodeId = null,
   readOnly = false,
   onCreateNode,
   onRenameNode,
@@ -76,6 +77,31 @@ export default function FileExplorer({
 
   const parentMap = useMemo(() => buildParentMap(tree), [tree]);
   const visibleNodes = useMemo(() => flattenVisible(tree, expandedIds), [tree, expandedIds]);
+
+  useEffect(() => {
+    if (!selectedNodeId) return;
+    const selectedNode = findNodeById(tree, selectedNodeId);
+    if (!selectedNode) return;
+    setSelectedId((prev) => (prev === selectedNodeId ? prev : selectedNodeId));
+    const ancestorIds: string[] = [];
+    let current = parentMap.get(selectedNodeId) ?? null;
+    while (current) {
+      ancestorIds.push(current);
+      current = parentMap.get(current) ?? null;
+    }
+    if (ancestorIds.length === 0) return;
+    setExpandedIds((prev) => {
+      let changed = false;
+      const next = new Set(prev);
+      ancestorIds.forEach((id) => {
+        if (!next.has(id)) {
+          next.add(id);
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [parentMap, selectedNodeId, setExpandedIds, tree]);
 
   const getParentPath = useCallback(
     (nodeId: string | null) => {

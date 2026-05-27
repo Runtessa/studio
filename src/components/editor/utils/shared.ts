@@ -19,7 +19,33 @@ export const UI_BUILTIN_DEPENDENCIES = new Set([
   '@tailwindcss/postcss',
   '@tailwindcss/vite',
 ]);
-export const UI_INTERNAL_IMPORT_PREFIX = '@appp/';
+export const UI_INTERNAL_IMPORT_PREFIX = '@app/';
+const UI_INTERNAL_IMPORT_PREFIX_LEGACY = '@appp/';
+const UI_INTERNAL_PATH_ROOT_HINTS = new Set([
+  'src',
+  'app',
+  'components',
+  'pages',
+  'lib',
+  'utils',
+  'styles',
+  'assets',
+  'hooks',
+  'context',
+  'router',
+  'index',
+]);
+
+const isInternalVirtualImport = (value: string) => {
+  const trimmed = String(value || '').trim();
+  if (!trimmed.startsWith('@app/')) return false;
+  const parts = trimmed.split('/').filter(Boolean);
+  if (parts.length < 2) return false;
+  // @app/<package> should be treated as a real dependency.
+  // Path-like imports such as @app/src/... are IDE-internal rewritten paths.
+  const firstSegment = parts[1] || '';
+  return parts.length > 2 && UI_INTERNAL_PATH_ROOT_HINTS.has(firstSegment);
+};
 
 const isBareImport = (value: string) => {
   const trimmed = value.trim();
@@ -33,7 +59,9 @@ export const extractUiDependencies = (source: string) => {
   const addDep = (value: string) => {
     const trimmed = value.trim();
     if (!trimmed || !isBareImport(trimmed)) return;
-    if (trimmed.startsWith(UI_INTERNAL_IMPORT_PREFIX)) return;
+    if (trimmed.startsWith(UI_INTERNAL_IMPORT_PREFIX_LEGACY) || isInternalVirtualImport(trimmed)) {
+      return;
+    }
     if (UI_BUILTIN_DEPENDENCIES.has(trimmed)) return;
     if (seen.has(trimmed)) return;
     seen.add(trimmed);
@@ -151,6 +179,7 @@ export const buildSharedBundle = (project: SharedProjectDto, files: SharedFileDt
     'const __cache = {};',
     "const __extensions = ['.jsx', '.js', '.json', '.css'];",
     `const __internalPrefix = ${JSON.stringify(UI_INTERNAL_IMPORT_PREFIX)};`,
+    `const __legacyInternalPrefix = ${JSON.stringify(UI_INTERNAL_IMPORT_PREFIX_LEGACY)};`,
     'const __externalRequire = require;',
     'const __normalize = (value) => {',
     "  const parts = String(value || '').split('/').filter(Boolean);",
@@ -164,8 +193,9 @@ export const buildSharedBundle = (project: SharedProjectDto, files: SharedFileDt
     '};',
     'const __resolve = (request, from) => {',
     "  const raw = String(request || '');",
-    '  if (raw.startsWith(__internalPrefix)) {',
-    '    const internalRaw = raw.slice(__internalPrefix.length);',
+    '  if (raw.startsWith(__internalPrefix) || raw.startsWith(__legacyInternalPrefix)) {',
+    '    const activePrefix = raw.startsWith(__internalPrefix) ? __internalPrefix : __legacyInternalPrefix;',
+    '    const internalRaw = raw.slice(activePrefix.length);',
     '    const internal = __normalize(internalRaw);',
     '    if (__modules[internal]) return internal;',
     '    for (const ext of __extensions) {',
@@ -193,7 +223,7 @@ export const buildSharedBundle = (project: SharedProjectDto, files: SharedFileDt
     '  const resolved = __resolve(raw, from || "");',
     '  const factory = __modules[resolved];',
     '  if (!factory) {',
-    "    if (!raw.startsWith('.') && !raw.startsWith('/') && !raw.startsWith(__internalPrefix)) {",
+    "    if (!raw.startsWith('.') && !raw.startsWith('/') && !raw.startsWith(__internalPrefix) && !raw.startsWith(__legacyInternalPrefix)) {",
     '      return __externalRequire(raw);',
     '    }',
     "    throw new Error('Cannot find module ' + raw);",
