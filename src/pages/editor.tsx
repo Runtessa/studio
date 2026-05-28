@@ -35,6 +35,7 @@ import { EditorBottomBar } from '@/components/editor/EditorBottomBar';
 import { EditorTabBar } from '@/components/editor/EditorTabBar';
 import { EditorTabContextMenu } from '@/components/editor/EditorTabContextMenu';
 import { EditorWorkspace } from '@/components/editor/EditorWorkspace';
+import type { AclFileKind } from '@/components/editor/AclSideFormPanel';
 import { EditorModals } from '@/components/editor/EditorModals';
 import {
   importReactAppFromDirectory,
@@ -1183,6 +1184,17 @@ export default function EditorPage() {
     }
     updateFileContent(fileId, value);
   };
+
+  const aclFormFile: AclFileKind | null =
+    activeFile?.meta?.kind === 'acl' ? activeFile.meta.file : null;
+
+  const handleAclFormContentChange = useCallback(
+    (nextContent: string) => {
+      if (!activeFile || activeFile.meta?.kind !== 'acl') return;
+      updateFileContent(activeFile.id, nextContent);
+    },
+    [activeFile, updateFileContent]
+  );
 
   const searchPattern = useMemo(
     () =>
@@ -2349,6 +2361,9 @@ export default function EditorPage() {
               onEditorDragOver={handleEditorDragOver}
               onEditorDragLeave={handleEditorDragLeave}
               onEditorDrop={handleEditorDrop}
+              aclFormFile={aclFormFile}
+              aclFormContent={activeContent}
+              onAclFormContentChange={handleAclFormContentChange}
               previewTarget={previewTarget}
               previewSrc={previewSrc}
               previewFrameRef={previewFrameRef}

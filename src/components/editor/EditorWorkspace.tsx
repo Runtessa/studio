@@ -3,6 +3,7 @@ import dynamic from 'next/dynamic';
 import type * as monaco from 'monaco-editor';
 import type * as monacoApi from 'monaco-editor/esm/vs/editor/editor.api';
 import { PreviewInspectPanel } from '@/components/editor/PreviewInspectPanel';
+import { AclSideFormPanel, type AclFileKind } from '@/components/editor/AclSideFormPanel';
 import type {
   ActiveFile,
   PreviewInspectEvent,
@@ -52,6 +53,9 @@ type EditorWorkspaceProps = {
   onEditorDragOver: (event: React.DragEvent<HTMLDivElement>) => void;
   onEditorDragLeave: (event: React.DragEvent<HTMLDivElement>) => void;
   onEditorDrop: (event: React.DragEvent<HTMLDivElement>) => void;
+  aclFormFile: AclFileKind | null;
+  aclFormContent: string;
+  onAclFormContentChange: (nextContent: string) => void;
   previewTarget: PreviewTarget | null;
   previewSrc: string;
   previewFrameRef: React.RefObject<HTMLIFrameElement | null>;
@@ -91,6 +95,9 @@ export function EditorWorkspace({
   onEditorDragOver,
   onEditorDragLeave,
   onEditorDrop,
+  aclFormFile,
+  aclFormContent,
+  onAclFormContentChange,
   previewTarget,
   previewSrc,
   previewFrameRef,
@@ -105,6 +112,8 @@ export function EditorWorkspace({
   uiCount,
   editorAreaRef,
 }: EditorWorkspaceProps) {
+  const showAclForm = editorView === 'code' && !showDiff && Boolean(aclFormFile);
+
   return (
     <div
       ref={editorAreaRef}
@@ -215,6 +224,13 @@ export function EditorWorkspace({
             }}
           />
         </div>
+        {showAclForm && aclFormFile && (
+          <AclSideFormPanel
+            file={aclFormFile}
+            content={aclFormContent}
+            onChangeContent={onAclFormContentChange}
+          />
+        )}
       </div>
       )}
       {editorView === 'preview' && (
