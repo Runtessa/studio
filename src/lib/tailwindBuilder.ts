@@ -1,7 +1,7 @@
 import postcss from 'postcss';
 import tailwindcss from 'tailwindcss';
 import autoprefixer from 'autoprefixer';
-import { createRequire } from 'module';
+import vm from 'vm';
 
 const TAILWIND_INPUT = '@tailwind base;\n@tailwind components;\n@tailwind utilities;';
 const TAILWIND_SUFFIX = '__tw';
@@ -12,8 +12,7 @@ const TAILWIND_CONFIG_NAMES = [
   'tailwind.config.mjs',
   'tailwind.config.json',
 ];
-
-const requireFn = createRequire(import.meta.url);
+const TAILWIND_CONFIG_TIMEOUT_MS = 250;
 
 const normalizeConfigName = (value: string) =>
   value.replace(/\\/g, '/').split('/').filter(Boolean).pop()?.toLowerCase() ?? '';
@@ -41,6 +40,46 @@ export const stripTailwindDependency = (deps: string[], tailwindName: string) =>
 
 export type TailwindSource = { raw: string; extension: string };
 
+const cloneTailwindConfigValue = (value: unknown, seen = new WeakSet<object>()): unknown => {
+  if (value === null) return null;
+  if (value === undefined) return undefined;
+  if (
+    typeof value === 'string' ||
+    typeof value === 'number' ||
+    typeof value === 'boolean'
+  ) {
+    return value;
+  }
+  if (value instanceof RegExp) {
+    return new RegExp(value.source, value.flags);
+  }
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => cloneTailwindConfigValue(item, seen))
+      .filter((item) => item !== undefined);
+  }
+  if (typeof value !== 'object') {
+    return undefined;
+  }
+  if (seen.has(value as object)) {
+    throw new Error('Tailwind config cannot contain circular references');
+  }
+  seen.add(value as object);
+  const tag = Object.prototype.toString.call(value);
+  if (tag !== '[object Object]') {
+    return undefined;
+  }
+  const output: Record<string, unknown> = {};
+  for (const [key, nested] of Object.entries(value as Record<string, unknown>)) {
+    const cloned = cloneTailwindConfigValue(nested, seen);
+    if (cloned !== undefined) {
+      output[key] = cloned;
+    }
+  }
+  seen.delete(value as object);
+  return output;
+};
+
 export const parseTailwindConfig = (source: string) => {
   const trimmed = (source ?? '').trim();
   if (!trimmed) return null;
@@ -52,14 +91,30 @@ export const parseTailwindConfig = (source: string) => {
     }
   }
   try {
-    const module = { exports: {} as any };
+    const module = { exports: {} as Record<string, unknown> | unknown };
     const exportReady = trimmed.replace(/export default\s+/g, 'module.exports = ');
-    // eslint-disable-next-line no-new-func
-    const factory = new Function('module', 'exports', 'require', exportReady);
-    factory(module, module.exports, requireFn);
+    const context = vm.createContext(
+      {
+        module,
+        exports: module.exports,
+      },
+      {
+        name: 'tailwind-config-sandbox',
+        codeGeneration: {
+          strings: false,
+          wasm: false,
+        },
+      },
+    );
+    const script = new vm.Script(`"use strict";\n${exportReady}`, {
+      filename: 'tailwind.config.js',
+    });
+    script.runInContext(context, { timeout: TAILWIND_CONFIG_TIMEOUT_MS });
     const resolved = (module.exports as any)?.default ?? module.exports;
     if (!resolved || typeof resolved !== 'object') return null;
-    return resolved;
+    const cloned = cloneTailwindConfigValue(resolved);
+    if (!cloned || typeof cloned !== 'object' || Array.isArray(cloned)) return null;
+    return cloned as Record<string, any>;
   } catch {
     return null;
   }
