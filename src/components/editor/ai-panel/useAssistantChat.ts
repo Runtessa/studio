@@ -33,6 +33,7 @@ type Params = {
   activeFileContext: ActiveFileContext;
   aclConfig: unknown;
   settings: AiSettings;
+  agentType: string;
   systemPrompt: string;
   onWorkspaceRefresh: () => void;
   loadRuns: () => Promise<void> | void;
@@ -59,6 +60,7 @@ export const useAssistantChat = ({
   activeFileContext,
   aclConfig,
   settings,
+  agentType,
   systemPrompt,
   onWorkspaceRefresh,
   loadRuns,
@@ -121,6 +123,7 @@ export const useAssistantChat = ({
               apiKey: settings.apiKey,
               model: settings.model,
               provider: settings.provider,
+              agentType,
             }
           : undefined,
       };

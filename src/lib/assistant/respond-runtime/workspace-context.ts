@@ -1,9 +1,16 @@
 import { type PreviewExceptionEntry } from '@/lib/assistant/preview-exceptions-store';
 
-const MAX_CONTEXT_CHARS = 240000;
+const parseContextLimit = () => {
+  const raw = Number(process.env.AGENT_CONTEXT_MAX_CHARS || '0');
+  if (!Number.isFinite(raw) || raw <= 0) return 0;
+  return Math.floor(raw);
+};
+
+const MAX_CONTEXT_CHARS = parseContextLimit();
 
 const truncate = (value: string, max = MAX_CONTEXT_CHARS) => {
   if (!value) return '';
+  if (!max || max <= 0) return value;
   if (value.length <= max) return value;
   return `${value.slice(0, max)}\n…(truncated)`;
 };
@@ -404,4 +411,3 @@ export const buildContextText = (
   }
   return lines.join('\n');
 };
-

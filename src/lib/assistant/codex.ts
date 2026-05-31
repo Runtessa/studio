@@ -1,3 +1,5 @@
+import { normalizeAssistantAgentType, resolveAssistantAgentTypeFromEnv } from '@/lib/assistant/agent-type';
+
 export const CODEX_SYSTEM_INSTRUCTIONS = `# IDP Editor AI Agent (Codex Mode)
 
 You are the IDP Editor AI agent running behind a host control-plane.
@@ -60,7 +62,14 @@ create_file, update_file, delete_file
 }
 `;
 
-export const resolveCodexModelFromEnv = () => {
-  const explicit = (process.env.AGENT_CODEX_MODEL || '').trim();
+export const resolveCodexModelFromEnv = (agentTypeInput?: string) => {
+  const agentType = agentTypeInput
+    ? normalizeAssistantAgentType(agentTypeInput, 'orchestrator')
+    : resolveAssistantAgentTypeFromEnv('orchestrator');
+  if (agentType === 'hermes') {
+    const hermesModel = (process.env.AGENT_HERMES_MODEL || process.env.AI_MODEL || '').trim();
+    if (hermesModel) return hermesModel;
+  }
+  const explicit = (process.env.AGENT_CODEX_MODEL || process.env.AI_MODEL || '').trim();
   return explicit || undefined;
 };

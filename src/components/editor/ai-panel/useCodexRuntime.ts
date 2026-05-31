@@ -5,6 +5,7 @@ import type {
   CodexGatewayRuntime,
   CodexLoginSession,
 } from './shared';
+import { normalizeAssistantAgentType } from '@/lib/assistant/agent-type';
 
 type Params = {
   apiFetch: ApiFetch;
@@ -80,6 +81,8 @@ export const useCodexRuntime = ({
   success,
   showError,
 }: Params) => {
+  const isCodexAgent = normalizeAssistantAgentType(agentType, 'orchestrator') === 'codex';
+
   const [codexAuthChecking, setCodexAuthChecking] = useState(false);
   const [codexAuthStarting, setCodexAuthStarting] = useState(false);
   const [codexAuthLoggedIn, setCodexAuthLoggedIn] = useState(false);
@@ -99,7 +102,7 @@ export const useCodexRuntime = ({
   };
 
   const loadCodexAuthStatus = async (silent = false) => {
-    if (agentType !== 'codex') return;
+    if (!isCodexAgent) return;
     if (!silent) setCodexAuthChecking(true);
     try {
       const result = await apiFetch('/api/assistant/auth/status');
@@ -184,7 +187,7 @@ export const useCodexRuntime = ({
   };
 
   const startCodexLogin = async () => {
-    if (agentType !== 'codex') return;
+    if (!isCodexAgent) return;
     setCodexAuthStarting(true);
     try {
       const result = await apiFetch('/api/assistant/auth/start', {
@@ -244,14 +247,14 @@ export const useCodexRuntime = ({
   };
 
   useEffect(() => {
-    if (!settingsOpen || agentType !== 'codex') return;
+    if (!settingsOpen || !isCodexAgent) return;
     void loadCodexAuthStatus();
     void loadCodexRuntime(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settingsOpen, agentType]);
+  }, [settingsOpen, isCodexAgent]);
 
   useEffect(() => {
-    if (!settingsOpen || agentType !== 'codex') return;
+    if (!settingsOpen || !isCodexAgent) return;
     if (!codexSession?.sessionId) return;
     if (codexSession.status !== 'starting' && codexSession.status !== 'running') {
       clearCodexPollTimer();
@@ -265,7 +268,7 @@ export const useCodexRuntime = ({
       clearCodexPollTimer();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settingsOpen, agentType, codexSession?.sessionId, codexSession?.status]);
+  }, [settingsOpen, isCodexAgent, codexSession?.sessionId, codexSession?.status]);
 
   useEffect(() => {
     return () => {

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import type { AiMessage, AiSettings, ApiFetch } from './shared';
+import { normalizeAssistantAgentType } from '@/lib/assistant/agent-type';
 
 type Params = {
   apiFetch: ApiFetch;
@@ -45,7 +46,12 @@ export const useAssistantSettings = ({
     const restore = async () => {
       try {
         const config = await apiFetch('/api/assistant/config');
-        setAgentType(String(config.agentType || 'orchestrator'));
+        const serverAgentType = normalizeAssistantAgentType(config.agentType, 'orchestrator');
+        setAgentType((prev) =>
+          Boolean(config.allowClientConfig)
+            ? normalizeAssistantAgentType(prev, serverAgentType)
+            : serverAgentType
+        );
         setSettings((prev) => ({
           ...prev,
           baseUrl: config.baseUrl || '',
@@ -75,6 +81,7 @@ export const useAssistantSettings = ({
         chatSessionId?: string;
         settings?: Partial<AiSettings>;
         systemPrompt?: string;
+        agentType?: string;
       };
       if (parsed.messages) setMessages(parsed.messages);
       if (parsed.chatSessionId && parsed.chatSessionId.trim()) {
@@ -82,6 +89,9 @@ export const useAssistantSettings = ({
       }
       if (parsed.settings) {
         setSettings((prev) => ({ ...prev, ...parsed.settings }));
+      }
+      if (parsed.agentType) {
+        setAgentType(normalizeAssistantAgentType(parsed.agentType, 'orchestrator'));
       }
       if (typeof parsed.systemPrompt === 'string') {
         setSystemPrompt(parsed.systemPrompt);
@@ -105,9 +115,10 @@ export const useAssistantSettings = ({
         watchPreviewExceptions: settings.watchPreviewExceptions,
       },
       systemPrompt,
+      agentType,
     };
     localStorage.setItem(storageKey, JSON.stringify(toStore));
-  }, [chatSessionId, messages, settings, storageKey, systemPrompt, tenantHost]);
+  }, [agentType, chatSessionId, messages, settings, storageKey, systemPrompt, tenantHost]);
 
   return {
     agentType,

@@ -23,6 +23,7 @@ type ExecuteCodexPipelineInput = {
   messages: Array<{ role: string; content: string }>;
   contextText: string;
   systemPrompt: string;
+  agentType?: string;
   model?: string;
   tools: Record<string, any>;
   workspace: WorkspaceContext;
@@ -79,7 +80,10 @@ export const executeCodexPipeline = async (
     input.onProgress?.(text);
   };
 
-  emitEvent('RUN_REQUESTED', 'S0_INIT', { mode: 'codex', agentType: resolveAgentType() });
+  emitEvent('RUN_REQUESTED', 'S0_INIT', {
+    mode: 'codex',
+    agentType: input.agentType || resolveAgentType(),
+  });
   emitEvent('CONTEXT_CAPTURED', 'S0_INIT');
   emitEvent('EXECUTION_STARTED', 'S2_EXTRACTION');
 
@@ -106,6 +110,7 @@ export const executeCodexPipeline = async (
           messages: currentMessages,
           contextText: input.contextText,
           systemPrompt: input.systemPrompt,
+          agentType: input.agentType,
           model: input.model,
           workspace: input.workspace,
         },

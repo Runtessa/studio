@@ -57,6 +57,7 @@ type ResolvePlanInput = {
   messages: Array<{ role: string; content: string }>;
   contextText: string;
   systemPrompt: string;
+  agentType?: string;
   model?: string;
   workspace: WorkspaceContext;
 };
@@ -73,6 +74,7 @@ export const resolveCodexPlan = async (
     messages: input.messages,
     contextText: input.contextText,
     systemPrompt: input.systemPrompt,
+    agentType: input.agentType,
     model: input.model,
     onLine: (line) => {
       const formatted = formatCodexProgressLine(line);
@@ -100,6 +102,7 @@ export const resolveCodexPlan = async (
       messages: [...input.messages, { role: 'user', content: buildCodexRecoveryPrompt(latestPrompt) }],
       contextText: input.contextText,
       systemPrompt: input.systemPrompt,
+      agentType: input.agentType,
       model: input.model,
       onLine: (line) => {
         const formatted = formatCodexProgressLine(line);

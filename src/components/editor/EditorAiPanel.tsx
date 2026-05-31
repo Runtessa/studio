@@ -44,6 +44,7 @@ export function EditorAiPanel({
   >({});
   const {
     agentType,
+    setAgentType,
     settings,
     setSettings,
     systemPrompt,
@@ -123,6 +124,7 @@ export function EditorAiPanel({
     activeFileContext,
     aclConfig,
     settings,
+    agentType,
     systemPrompt,
     onWorkspaceRefresh,
     loadRuns,
@@ -140,7 +142,7 @@ export function EditorAiPanel({
       const query = settings.allowClientConfig
         ? `?baseUrl=${encodeURIComponent(settings.baseUrl)}&apiKey=${encodeURIComponent(
             settings.apiKey,
-          )}`
+          )}&agentType=${encodeURIComponent(agentType)}`
         : "";
       const response = await apiFetch(`/api/assistant/models${query}`);
       setModels(response.models ?? []);
@@ -313,6 +315,7 @@ export function EditorAiPanel({
         models={models}
         loadingModels={loadingModels}
         agentType={agentType}
+        setAgentType={setAgentType}
         codexAuthLoggedIn={codexAuthLoggedIn}
         codexAuthChecking={codexAuthChecking}
         codexAuthStarting={codexAuthStarting}

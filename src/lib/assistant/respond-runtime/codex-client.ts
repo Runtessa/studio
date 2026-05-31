@@ -7,10 +7,15 @@ import {
   resolveCodexGatewayBaseForUser,
   resolveCodexGatewayModeValue,
 } from '@/lib/assistant/gateway-runtime';
+import {
+  isCodexFamilyAgentType,
+  normalizeAssistantAgentType,
+} from '@/lib/assistant/agent-type';
 
-const resolveAgentType = () => (process.env.AGENT_TYPE || '').trim().toLowerCase();
+const resolveAgentType = () => normalizeAssistantAgentType(process.env.AGENT_TYPE, 'orchestrator');
 
-export const isCodexAgentMode = () => resolveAgentType() === 'codex';
+export const isCodexAgentMode = (agentType?: string) =>
+  isCodexFamilyAgentType(agentType || resolveAgentType());
 
 export const resolveCodexCwd = () => {
   const fromEnv = (process.env.AGENT_CODEX_CWD || '').trim();
@@ -119,8 +124,109 @@ export type CodexExecInput = {
   messages: Array<{ role: string; content: string }>;
   contextText: string;
   systemPrompt: string;
+  agentType?: string;
   model?: string;
   onLine?: (line: string) => void;
+};
+
+const normalizeBaseUrl = (value?: string | null) => String(value || '').trim().replace(/\/+$/, '');
+
+const resolveHermesBaseUrl = () =>
+  normalizeBaseUrl(process.env.HERMES_BASE_URL || process.env.AI_BASE_URL || '');
+
+const resolveHermesApiToken = () =>
+  String(process.env.HERMES_API_TOKEN || process.env.HERMES_API_KEY || process.env.AI_API_KEY || '').trim();
+
+const resolveHermesModel = (requested?: string) => {
+  const explicit = String(requested || '').trim();
+  if (explicit) return explicit;
+  return String(process.env.HERMES_MODEL || process.env.AGENT_HERMES_MODEL || process.env.AI_MODEL || '').trim();
+};
+
+const parseHermesResponseText = (payload: any): string => {
+  if (!payload || typeof payload !== 'object') return '';
+
+  const choices = Array.isArray(payload.choices) ? payload.choices : [];
+  const firstChoice = choices[0];
+  const chatText =
+    typeof firstChoice?.message?.content === 'string'
+      ? firstChoice.message.content
+      : typeof firstChoice?.text === 'string'
+        ? firstChoice.text
+        : '';
+  if (chatText.trim()) return chatText.trim();
+
+  if (typeof payload.output_text === 'string' && payload.output_text.trim()) {
+    return payload.output_text.trim();
+  }
+
+  const output = Array.isArray(payload.output) ? payload.output : [];
+  for (const item of output) {
+    const content = Array.isArray(item?.content) ? item.content : [];
+    for (const block of content) {
+      if (typeof block?.text === 'string' && block.text.trim()) {
+        return block.text.trim();
+      }
+    }
+  }
+
+  return '';
+};
+
+const executeHermesProxy = async (input: CodexExecInput) => {
+  const baseUrl = resolveHermesBaseUrl();
+  if (!baseUrl) {
+    throw new Error('HERMES_BASE_URL is not configured');
+  }
+  const token = resolveHermesApiToken();
+  if (!token) {
+    throw new Error('HERMES_API_TOKEN is not configured');
+  }
+
+  const model = resolveHermesModel(input.model);
+  if (!model) {
+    throw new Error('HERMES_MODEL is not configured');
+  }
+
+  const prompt = buildCodexPrompt(input.messages, input.contextText, input.systemPrompt);
+  input.onLine?.(`[hermes] proxy request started (${model})`);
+
+  const controller = new AbortController();
+  const timeoutMs = resolveCodexTimeoutMs();
+  const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
+
+  const headers = {
+    'content-type': 'application/json',
+    authorization: `Bearer ${token}`,
+  };
+
+  try {
+    const chatResponse = await fetch(`${baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        model,
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.1,
+      }),
+      signal: controller.signal,
+    });
+
+    if (!chatResponse.ok) {
+      const detail = (await chatResponse.text().catch(() => '')).trim();
+      throw new Error(detail || `Hermes API request failed (${chatResponse.status})`);
+    }
+
+    const payload = await chatResponse.json().catch(() => ({}));
+    const message = parseHermesResponseText(payload);
+    if (!message) {
+      throw new Error('Hermes API returned no usable text response');
+    }
+    input.onLine?.('[hermes] proxy request completed');
+    return { message };
+  } finally {
+    clearTimeout(timeoutHandle);
+  }
 };
 
 const executeCodexCli = async (input: CodexExecInput) => {
@@ -357,6 +463,11 @@ const executeCodexGateway = async (input: CodexExecInput) => {
 };
 
 export const executeCodex = async (input: CodexExecInput) => {
+  const agentType = normalizeAssistantAgentType(input.agentType || resolveAgentType(), 'orchestrator');
+  if (agentType === 'hermes') {
+    return executeHermesProxy(input);
+  }
+
   const mode = resolveCodexGatewayModeValue();
   const gatewayEnabled = mode !== 'off' && mode !== 'none' && mode !== 'disabled';
   const shouldUseGateway =

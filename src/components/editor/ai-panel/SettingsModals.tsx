@@ -11,6 +11,7 @@ import {
   type CodexGatewayRuntime,
   type CodexLoginSession,
 } from './shared';
+import { normalizeAssistantAgentType } from '@/lib/assistant/agent-type';
 
 type SettingsModalsProps = {
   settingsOpen: boolean;
@@ -21,6 +22,7 @@ type SettingsModalsProps = {
   models: string[];
   loadingModels: boolean;
   agentType: string;
+  setAgentType: (value: string) => void;
   codexAuthLoggedIn: boolean;
   codexAuthChecking: boolean;
   codexAuthStarting: boolean;
@@ -53,6 +55,7 @@ export function SettingsModals({
   models,
   loadingModels,
   agentType,
+  setAgentType,
   codexAuthLoggedIn,
   codexAuthChecking,
   codexAuthStarting,
@@ -75,6 +78,10 @@ export function SettingsModals({
   downloadTenantDump,
   exportingDump,
 }: SettingsModalsProps) {
+  const normalizedAgentType = normalizeAssistantAgentType(agentType, 'orchestrator');
+  const isCodexAgent = normalizedAgentType === 'codex';
+  const isHermesAgent = normalizedAgentType === 'hermes';
+
   return (
     <>
       <Modal
@@ -99,7 +106,7 @@ export function SettingsModals({
         }
       >
         <div className="space-y-4">
-          {agentType === 'codex' ? (
+          {isCodexAgent ? (
             <CodexSettingsCard
               codexAuthLoggedIn={codexAuthLoggedIn}
               codexAuthChecking={codexAuthChecking}
@@ -122,6 +129,23 @@ export function SettingsModals({
               ? 'Client-side overrides are enabled for this tenant.'
               : 'Settings are managed by server env (AI_ALLOW_CLIENT_CONFIG=false).'}
           </div>
+          <Select
+            label="Agent"
+            value={agentType}
+            onChange={(event) => setAgentType(String(event.target.value || 'orchestrator'))}
+            options={[
+              { label: 'Hermes', value: 'hermes' },
+              { label: 'Codex', value: 'codex' },
+              { label: 'Orchestrator', value: 'orchestrator' },
+            ]}
+            disabled={!settings.allowClientConfig}
+          />
+          {isHermesAgent ? (
+            <div className="rounded-lg border border-[#2a2d2e] bg-[#171717] px-3 py-2 text-xs text-gray-300">
+              Hermes mode uses standard provider/model settings below and does not use Codex
+              login/container runtime controls.
+            </div>
+          ) : null}
           <div className="rounded-lg border border-[#2a2d2e] bg-[#171717] px-3 py-2 text-xs text-gray-300">
             <label className="flex items-center gap-2">
               <input
@@ -141,7 +165,7 @@ export function SettingsModals({
               Captures runtime/UI/API errors from preview iframe while you test.
             </div>
           </div>
-          {agentType !== 'codex' ? (
+          {!isCodexAgent ? (
             <>
               <Input
                 label="Base URL"

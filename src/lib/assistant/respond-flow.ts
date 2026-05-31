@@ -118,6 +118,7 @@ type CodexRunParams = {
   rawSystemPrompt: unknown;
   config: unknown;
   allowClientConfig: boolean;
+  agentType: string;
   messages: Array<{ role: string; content: string }>;
   contextText: string;
   tools: Record<string, unknown>;
@@ -140,6 +141,7 @@ export const handleCodexRun = async ({
   rawSystemPrompt,
   config,
   allowClientConfig,
+  agentType,
   messages,
   contextText,
   tools,
@@ -148,7 +150,11 @@ export const handleCodexRun = async ({
   codexSystemPrompt,
 }: CodexRunParams): Promise<void> => {
   const systemPrompt = normalizeSystemPrompt(rawSystemPrompt, codexSystemPrompt);
-  const codexModel = resolveCodexModel((config ?? {}) as { model?: string }, allowClientConfig);
+  const codexModel = resolveCodexModel(
+    (config ?? {}) as { model?: string },
+    allowClientConfig,
+    agentType,
+  );
 
   const completePipeline = async (pipeline: Awaited<ReturnType<typeof executeCodexPipeline>>) => {
     const now = new Date().toISOString();
@@ -182,6 +188,7 @@ export const handleCodexRun = async ({
       messages,
       contextText,
       systemPrompt,
+      agentType,
       model: codexModel,
       tools: tools as Record<string, any>,
       workspace,
@@ -227,6 +234,7 @@ export const handleCodexRun = async ({
     messages,
     contextText,
     systemPrompt,
+    agentType,
     model: codexModel,
     tools: tools as Record<string, any>,
     workspace,

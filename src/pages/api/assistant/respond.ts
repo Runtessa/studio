@@ -25,6 +25,10 @@ import {
   type WorkspaceContext,
 } from '@/lib/assistant/respond-runtime';
 import {
+  normalizeAssistantAgentType,
+  resolveAssistantAgentTypeFromEnv,
+} from '@/lib/assistant/agent-type';
+import {
   handleAssistantRun,
   handleCodexRun,
   tryRespondFromCachedRun,
@@ -49,6 +53,13 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
     chatId: rawChatId,
     systemPrompt: rawSystemPrompt,
   } = req.body ?? {};
+
+  const envAgentType = resolveAssistantAgentTypeFromEnv('orchestrator');
+  const requestedAgentType =
+    config && typeof config === 'object' ? (config as Record<string, unknown>).agentType : undefined;
+  const effectiveAgentType = allowClientConfig
+    ? normalizeAssistantAgentType(requestedAgentType, envAgentType)
+    : envAgentType;
 
   const chatId =
     typeof rawChatId === 'string' && rawChatId.trim()
@@ -141,7 +152,7 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
 
   await startAssistantRun(tenant.id, runId, { idempotency, runName });
 
-  if (isCodexAgentMode()) {
+  if (isCodexAgentMode(effectiveAgentType)) {
     await handleCodexRun({
       req,
       res,
@@ -156,6 +167,7 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
       rawSystemPrompt,
       config,
       allowClientConfig,
+      agentType: effectiveAgentType,
       messages: normalizedMessages,
       contextText,
       tools: tools as Record<string, unknown>,

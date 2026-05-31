@@ -17,9 +17,19 @@ import {
   shouldWatchPreviewFromPrompt,
 } from '@/lib/assistant/respond-runtime/run-normalization';
 import { buildContextText, type WorkspaceContext } from '@/lib/assistant/respond-runtime/workspace-context';
+import { normalizeAssistantAgentType } from '@/lib/assistant/agent-type';
 
-const resolveCodexModel = (_config: { model?: string } | undefined, _allowClientConfig: boolean) => {
-  return resolveCodexModelFromEnv();
+const resolveCodexModel = (
+  config: { model?: string } | undefined,
+  allowClientConfig: boolean,
+  agentType?: string,
+) => {
+  const normalizedAgent = normalizeAssistantAgentType(agentType || process.env.AGENT_TYPE, 'orchestrator');
+  if (allowClientConfig) {
+    const requested = String(config?.model || '').trim();
+    if (requested) return requested;
+  }
+  return resolveCodexModelFromEnv(normalizedAgent);
 };
 
 export {
