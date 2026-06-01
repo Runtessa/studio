@@ -8,6 +8,7 @@ import { ASSISTANT_SYSTEM_INSTRUCTIONS } from '@/lib/assistant/agent';
 import type { AssistantChange } from '@/lib/assistant/types';
 import {
   buildAssistantIdempotencyKey,
+  getAssistantRun,
   getAssistantRunSummary,
   reserveAssistantRun,
   startAssistantRun,
@@ -18,6 +19,7 @@ import {
   normalizeMessages,
   shouldWatchPreviewFromPrompt,
   resolvePreviewExceptionsLimit,
+  buildAgentWorkspaceSession,
   buildContextText,
   createRunId,
   buildRunName,
@@ -33,6 +35,17 @@ import {
   handleCodexRun,
   tryRespondFromCachedRun,
 } from '@/lib/assistant/respond-flow';
+
+type RawAssistantContext = {
+  watchPreviewExceptions?: unknown;
+  previewExceptionsLimit?: unknown;
+  activeFile?: {
+    id: string;
+    name: string;
+    meta?: unknown;
+    content: string;
+  } | null;
+};
 
 export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) => {
   if (req.method !== 'POST') {
@@ -93,10 +106,7 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
 
   const context =
     rawContext && typeof rawContext === 'object'
-      ? (rawContext as {
-          watchPreviewExceptions?: unknown;
-          previewExceptionsLimit?: unknown;
-        })
+      ? (rawContext as RawAssistantContext)
       : null;
 
   const watchPreviewExceptions =
@@ -105,6 +115,38 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
   const previewExceptions = watchPreviewExceptions
     ? await listPreviewExceptions(tenant.id, String(user.id), previewExceptionsLimit)
     : [];
+
+  const runId = createRunId(chatId);
+  const previousRun = await getAssistantRun(tenant.id, runId);
+  const session = buildAgentWorkspaceSession({
+    chatId,
+    messages: normalizedMessages,
+    workspace: {
+      tenant: workspace.tenant ?? undefined,
+      modules: workspace.modules ?? [],
+      models: workspace.models ?? [],
+      uiPackages: workspace.uiPackages ?? [],
+      sharedUi: workspace.sharedUi ?? [],
+      sharedModules: workspace.sharedModules ?? [],
+      sharedUiFiles: workspace.sharedUiFiles ?? [],
+      sharedModuleFiles: workspace.sharedModuleFiles ?? [],
+    },
+    acl: {
+      permissions: acl.permissions,
+      roles: acl.roles,
+      endpoints: acl.endpoints,
+    },
+    preview: {
+      enabled: watchPreviewExceptions,
+      exceptions: previewExceptions,
+    },
+    actor: {
+      role: user.normalizedRole,
+      permissions: user.permissions || [],
+    },
+    activeFile: context?.activeFile ?? null,
+    previousRun,
+  });
 
   const contextText = buildContextText(
     {
@@ -130,10 +172,15 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
       role: user.normalizedRole,
       permissions: user.permissions || [],
     },
+    {
+      chatId,
+      messages: normalizedMessages,
+      activeFile: context?.activeFile ?? null,
+      previousRun,
+    },
   );
 
   const idempotency = buildAssistantIdempotencyKey(normalizedMessages, contextText);
-  const runId = createRunId(chatId);
   const existingRunSummary = await getAssistantRunSummary(tenant.id, runId);
   const runName = existingRunSummary?.runName || buildRunName(normalizedMessages);
   const reservation = await reserveAssistantRun(tenant.id, runId, idempotency);
@@ -170,6 +217,7 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
       agentType: effectiveAgentType,
       messages: normalizedMessages,
       contextText,
+      session,
       tools: tools as Record<string, unknown>,
       workspace,
       changes,

@@ -8,13 +8,14 @@ import {
   getAssistantRunSummary,
 } from '@/lib/assistant/state-store';
 import type { AssistantChange } from '@/lib/assistant/types';
-import type { WorkspaceContext } from '@/lib/assistant/respond-runtime';
+import type { AgentWorkspaceSession, WorkspaceContext } from '@/lib/assistant/respond-runtime';
 import {
   executeCodexPipeline,
   normalizeSystemPrompt,
   pickAvailableModel,
   resolveCodexModel,
 } from '@/lib/assistant/respond-runtime';
+import type { WorkspaceFileEvent } from '@/lib/assistant/respond-runtime/codex-client';
 
 const openSse = (res: NextApiResponse) => {
   res.setHeader('Content-Type', 'text/event-stream');
@@ -26,6 +27,12 @@ const openSse = (res: NextApiResponse) => {
 const sendSse = (res: NextApiResponse, payload: Record<string, unknown>) => {
   res.write(`data: ${JSON.stringify(payload)}\n\n`);
 };
+
+const normalizeWorkspaceFileEvent = (event: WorkspaceFileEvent) => ({
+  path: String(event.path || '').trim(),
+  action: event.action === 'create' || event.action === 'delete' ? event.action : 'edit',
+  content: typeof event.content === 'string' ? event.content : undefined,
+});
 
 type CachedRunParams = {
   tenantId: string;
@@ -121,6 +128,7 @@ type CodexRunParams = {
   agentType: string;
   messages: Array<{ role: string; content: string }>;
   contextText: string;
+  session: AgentWorkspaceSession;
   tools: Record<string, unknown>;
   workspace: WorkspaceContext;
   changes: AssistantChange[];
@@ -144,6 +152,7 @@ export const handleCodexRun = async ({
   agentType,
   messages,
   contextText,
+  session,
   tools,
   workspace,
   changes,
@@ -187,6 +196,7 @@ export const handleCodexRun = async ({
       chatId,
       messages,
       contextText,
+      session,
       systemPrompt,
       agentType,
       model: codexModel,
@@ -195,6 +205,8 @@ export const handleCodexRun = async ({
       changes,
       onProgress: (line) => sendSse(res, { type: 'progress', line }),
       onChange: (change) => sendSse(res, { type: 'change', change }),
+      onWorkspaceFile: (event) =>
+        sendSse(res, { type: 'workspace_file', file: normalizeWorkspaceFileEvent(event) }),
       onEvent: (event) => {
         sendSse(res, { type: 'run_event', event });
         void appendAssistantEvent(tenantId, runId, event).catch(() => undefined);
@@ -233,6 +245,7 @@ export const handleCodexRun = async ({
     chatId,
     messages,
     contextText,
+    session,
     systemPrompt,
     agentType,
     model: codexModel,

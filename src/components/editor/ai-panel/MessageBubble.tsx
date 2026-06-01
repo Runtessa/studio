@@ -40,6 +40,8 @@ export function MessageBubble({
   const showThinking = isPendingAssistant && !msg.content.trim();
   const progressLines = msg.progress ?? [];
   const recentProgress = progressLines.slice(-6);
+  const liveFiles = msg.liveFiles ?? [];
+  const recentLiveFiles = liveFiles.slice(-8).reverse();
 
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
@@ -65,6 +67,24 @@ export function MessageBubble({
             <div className="max-h-28 overflow-auto border-t border-[#2a2d2e] px-2 py-1.5 font-mono text-[10px] leading-4 text-gray-500 opacity-90">
               {recentProgress.map((line, index) => (
                 <div key={`${msg.id}-progress-${index}`}>{line}</div>
+              ))}
+            </div>
+          </details>
+        ) : null}
+        {!isUser && recentLiveFiles.length ? (
+          <details
+            className="mt-2 overflow-hidden rounded border border-[#2a2d2e] bg-[#161616]"
+            open={isPendingAssistant}
+          >
+            <summary className="cursor-pointer list-none px-2 py-1 text-[10px] text-gray-400 hover:bg-[#1f1f1f]">
+              Live workspace files ({liveFiles.length})
+            </summary>
+            <div className="max-h-32 overflow-auto border-t border-[#2a2d2e] px-2 py-1.5 font-mono text-[10px] leading-4 text-gray-400">
+              {recentLiveFiles.map((file, index) => (
+                <div key={`${msg.id}-workspace-file-${file.path}-${index}`} className="py-0.5">
+                  <span className="text-gray-500">{file.action}</span>{' '}
+                  <span className="break-all text-gray-300">{file.path}</span>
+                </div>
               ))}
             </div>
           </details>

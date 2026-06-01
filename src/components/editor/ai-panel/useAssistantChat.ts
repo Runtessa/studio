@@ -6,6 +6,7 @@ import {
   createId,
   mapRunSteps,
   mergeChanges,
+  mergeLiveWorkspaceFiles,
   mergeProgressLines,
   mergeSteps,
   normalizeAssistantMessage,
@@ -14,6 +15,7 @@ import {
   type AiMessage,
   type AiSettings,
   type ApiStreamFetch,
+  type LiveWorkspaceFileUpdate,
 } from './shared';
 
 export type ActiveFileContext = {
@@ -36,6 +38,8 @@ type Params = {
   agentType: string;
   systemPrompt: string;
   onWorkspaceRefresh: () => void;
+  onLiveWorkspaceFileUpdate?: (file: LiveWorkspaceFileUpdate) => void;
+  onLiveWorkspaceRunStateChange?: (state: 'committed' | 'reverted') => void;
   loadRuns: () => Promise<void> | void;
   success: (message: string) => void;
   showError: (message: string) => void;
@@ -63,6 +67,8 @@ export const useAssistantChat = ({
   agentType,
   systemPrompt,
   onWorkspaceRefresh,
+  onLiveWorkspaceFileUpdate,
+  onLiveWorkspaceRunStateChange,
   loadRuns,
   success,
   showError,
@@ -165,6 +171,8 @@ export const useAssistantChat = ({
       let finalChanges: AssistantChange[] = [];
       let finalEvents: AssistantRunEvent[] = [];
       let finalConflicts: AssistantRunConflict[] = [];
+      let sawWorkspaceMutation = false;
+      let streamErrorMessage = '';
 
       const appendContent = (text: string) => {
         const cleaned = stripMetaLogLines(text);
@@ -205,6 +213,7 @@ export const useAssistantChat = ({
               message?: string;
               changes?: AssistantChange[];
               change?: AssistantChange;
+              file?: LiveWorkspaceFileUpdate;
               event?: AssistantRunEvent;
               events?: AssistantRunEvent[];
               conflicts?: AssistantRunConflict[];
@@ -251,7 +260,30 @@ export const useAssistantChat = ({
                 ),
               );
             }
+            if (event.type === 'workspace_file' && event.file?.path) {
+              const file = {
+                path: String(event.file.path || '').trim(),
+                action:
+                  event.file.action === 'create' || event.file.action === 'delete'
+                    ? event.file.action
+                    : 'edit',
+                content: typeof event.file.content === 'string' ? event.file.content : undefined,
+              } satisfies LiveWorkspaceFileUpdate;
+              sawWorkspaceMutation = true;
+              setMessages((prev) =>
+                prev.map((msg) =>
+                  msg.id === assistantId
+                    ? {
+                        ...msg,
+                        liveFiles: mergeLiveWorkspaceFiles(msg.liveFiles, file),
+                      }
+                    : msg,
+                ),
+              );
+              onLiveWorkspaceFileUpdate?.(file);
+            }
             if (event.type === 'error' && event.message) {
+              streamErrorMessage = String(event.message || '').trim();
               setMessages((prev) =>
                 prev.map((msg) =>
                   msg.id === assistantId
@@ -310,12 +342,18 @@ export const useAssistantChat = ({
             : msg,
         ),
       );
+      if (sawWorkspaceMutation) {
+        onLiveWorkspaceRunStateChange?.(streamErrorMessage ? 'reverted' : 'committed');
+      }
       if (finalChanges.length) {
         onWorkspaceRefresh();
       }
       await loadRuns();
-      success('Assistant updated the workspace');
+      if (!streamErrorMessage) {
+        success('Assistant updated the workspace');
+      }
     } catch (err) {
+      onLiveWorkspaceRunStateChange?.('reverted');
       if (!stoppingRef.current && !isAbortError(err)) {
         showError((err as Error).message || 'Assistant request failed');
       }

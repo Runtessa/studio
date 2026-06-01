@@ -6,14 +6,30 @@ import {
   type CodexOperation,
   type CodexPlan,
 } from './codex-ops';
-import type { WorkspaceContext } from './workspace-context';
-import { executeCodex, getLatestUserPrompt } from './codex-client';
+import type { AgentWorkspaceSession, WorkspaceContext } from './workspace-context';
+import { executeCodex, getLatestUserPrompt, type WorkspaceFileEvent } from './codex-client';
 
 type CodexResolvedPlan = {
   message: string;
   plan: CodexPlan | null;
   operations: CodexOperation[];
 };
+
+const mapWorkspaceDiffToOperations = (
+  diff: Array<{ path: string; action: 'create' | 'edit' | 'delete'; content?: string }>,
+): CodexOperation[] =>
+  diff.map((item) => ({
+    tool:
+      item.action === 'create'
+        ? 'create_file'
+        : item.action === 'delete'
+          ? 'delete_file'
+          : 'update_file',
+    input:
+      item.action === 'delete'
+        ? { path: item.path }
+        : { path: item.path, content: item.content || '' },
+  }));
 
 const codexAskedForUnavailableTools = (message: string) => {
   const text = String(message || '').toLowerCase();
@@ -30,12 +46,23 @@ const codexAskedForUnavailableTools = (message: string) => {
   );
 };
 
-const buildCodexRecoveryPrompt = (latestPrompt: string) => `Your previous reply asked for unavailable direct tools.
-In this environment, tools are executed by the host, and their outputs are already provided in FULL WORKSPACE CONTEXT.
+const buildCodexRecoveryPrompt = (
+  latestPrompt: string,
+  session: AgentWorkspaceSession,
+) => `Your previous reply asked for unavailable direct tools.
+In this environment, tools are executed by the host, and their outputs are already provided in the TENANT SESSION CONTRACT.
 Do NOT ask for list_workspace/get_acl_config again.
 Return a valid JSON object with "summary" and "operations" now.
 If the latest user request requires workspace mutations, "operations" must be non-empty.
-- For implementation requests, include backend + models + UI + ACL in one run.
+- Respect the task scope in the session contract. Required surfaces: ${[
+   session.task.expectations.backend ? 'backend' : '',
+   session.task.expectations.models ? 'models' : '',
+   session.task.expectations.ui ? 'ui' : '',
+   session.task.expectations.acl ? 'acl' : '',
+   session.task.expectations.shared ? 'shared' : '',
+ ]
+   .filter(Boolean)
+   .join(', ') || 'none explicitly required'}.
 - Never generate mock/fake/sample/dummy placeholder data.
 - Backend ORM usage must be await adapters.orm('<database>:<key>').
 - UI networking must use @app/datacontext (no fetch/axios/XMLHttpRequest).
@@ -60,11 +87,13 @@ type ResolvePlanInput = {
   agentType?: string;
   model?: string;
   workspace: WorkspaceContext;
+  session: AgentWorkspaceSession;
 };
 
 export const resolveCodexPlan = async (
   input: ResolvePlanInput,
   onProgress?: (line: string) => void,
+  onWorkspaceFile?: (event: WorkspaceFileEvent) => void,
 ): Promise<CodexResolvedPlan> => {
   const codex = await executeCodex({
     runId: input.runId,
@@ -73,6 +102,7 @@ export const resolveCodexPlan = async (
     chatId: input.chatId,
     messages: input.messages,
     contextText: input.contextText,
+    session: input.session,
     systemPrompt: input.systemPrompt,
     agentType: input.agentType,
     model: input.model,
@@ -81,9 +111,26 @@ export const resolveCodexPlan = async (
       if (!formatted?.text) return;
       onProgress?.(formatted.text);
     },
+    onWorkspaceFile,
   });
 
   onProgress?.('[codex] response received, resolving operations...');
+
+  const workspaceDiff = Array.isArray((codex as any).workspaceDiff)
+    ? ((codex as any).workspaceDiff as Array<{
+        path: string;
+        action: 'create' | 'edit' | 'delete';
+        content?: string;
+      }>)
+    : [];
+  if (workspaceDiff.length) {
+    onProgress?.(`[codex] gateway workspace diff produced ${workspaceDiff.length} file change(s)`);
+    return {
+      message: codex.message,
+      plan: null,
+      operations: mapWorkspaceDiffToOperations(workspaceDiff),
+    };
+  }
 
   let codexMessage = codex.message;
   let plan = parseCodexPlan(codexMessage);
@@ -99,8 +146,12 @@ export const resolveCodexPlan = async (
       userId: input.userId,
       userName: input.userName,
       chatId: input.chatId,
-      messages: [...input.messages, { role: 'user', content: buildCodexRecoveryPrompt(latestPrompt) }],
+      messages: [
+        ...input.messages,
+        { role: 'user', content: buildCodexRecoveryPrompt(latestPrompt, input.session) },
+      ],
       contextText: input.contextText,
+      session: input.session,
       systemPrompt: input.systemPrompt,
       agentType: input.agentType,
       model: input.model,
@@ -109,6 +160,7 @@ export const resolveCodexPlan = async (
         if (!formatted?.text) return;
         onProgress?.(formatted.text);
       },
+      onWorkspaceFile,
     });
     codexMessage = recovery.message;
     plan = parseCodexPlan(codexMessage);

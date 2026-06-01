@@ -1,5 +1,6 @@
 import type { AssistantChange } from '@/lib/assistant/types';
 import type { AssistantRunEvent } from '@/lib/assistant/orchestrator';
+import type { AgentWorkspaceSession } from './workspace-context';
 import { normalizePath, normalizeProjectKind, pickInput, toToolId, type CodexOperation } from './codex-ops';
 
 export type CodexConflict = {
@@ -94,8 +95,8 @@ export const buildCodexDagFromEvents = (runId: string, events: AssistantRunEvent
 const buildCoverageState = (
   operations: CodexOperation[],
   changes: AssistantChange[],
-): { backend: boolean; models: boolean; ui: boolean; acl: boolean } => {
-  const state = { backend: false, models: false, ui: false, acl: false };
+): { backend: boolean; models: boolean; ui: boolean; acl: boolean; shared: boolean } => {
+  const state = { backend: false, models: false, ui: false, acl: false, shared: false };
   for (const op of operations) {
     const tool = toToolId(String(op.tool || op.name || op.action || op.toolId || ''));
     const opInput =
@@ -118,9 +119,11 @@ const buildCoverageState = (
     }
     if (tool === 'create_shared_module_project') {
       state.backend = true;
+      state.shared = true;
     }
-    if (tool === 'write_shared_file') {
+    if (tool === 'write_shared_file' || tool === 'delete_shared_file') {
       const projectKind = normalizeProjectKind(opInput?.projectKind);
+      state.shared = true;
       if (projectKind === 'module') {
         state.backend = true;
       } else {
@@ -139,8 +142,12 @@ const buildCoverageState = (
         state.models = true;
       } else if (lower.startsWith('shared-modules/') || lower.startsWith('shared-backend/')) {
         state.backend = true;
-      } else if (lower.startsWith('ui/') || lower.startsWith('shared-ui/')) {
+        state.shared = true;
+      } else if (lower.startsWith('ui/')) {
         state.ui = true;
+      } else if (lower.startsWith('shared-ui/')) {
+        state.ui = true;
+        state.shared = true;
       }
     }
     if (tool === 'update_acl_file') {
@@ -152,10 +159,12 @@ const buildCoverageState = (
     if (change.kind === 'model') state.models = true;
     if (change.kind === 'ui') state.ui = true;
     if (change.kind === 'shared-file') {
+      state.shared = true;
       if (change.projectKind === 'module') state.backend = true;
       else state.ui = true;
     }
     if (change.kind === 'shared-project') {
+      state.shared = true;
       if (change.after?.kind === 'module' || change.before?.kind === 'module') {
         state.backend = true;
       } else {
@@ -167,8 +176,11 @@ const buildCoverageState = (
   return state;
 };
 
+const shouldRequireSurface = (session: AgentWorkspaceSession, surface: keyof AgentWorkspaceSession['task']['expectations']) =>
+  Boolean(session.task.expectations[surface]);
+
 export const buildCoverageConflicts = (
-  prompt: string,
+  session: AgentWorkspaceSession,
   operations: CodexOperation[],
   changes: AssistantChange[],
   opErrors: string[],
@@ -180,7 +192,7 @@ export const buildCoverageConflicts = (
       createConflict(`Operation failures: ${opErrors.join(' | ')}`, 'high', relatedNodeIds),
     );
   }
-  const looksLikeMutation = promptLooksLikeMutation(prompt);
+  const looksLikeMutation = promptLooksLikeMutation(session.task.objective || '');
   if (!looksLikeMutation) return conflicts;
   if (!changes.length) {
     conflicts.push(
@@ -188,38 +200,47 @@ export const buildCoverageConflicts = (
     );
   }
   const coverage = buildCoverageState(operations, changes);
-  if (!coverage.backend) {
+  if (shouldRequireSurface(session, 'backend') && !coverage.backend) {
     conflicts.push(
       createConflict(
-        'Missing backend module updates. Every implementation task must include backend changes.',
+        'Missing backend module changes for the current task scope.',
         'high',
         relatedNodeIds,
       ),
     );
   }
-  if (!coverage.models) {
+  if (shouldRequireSurface(session, 'models') && !coverage.models) {
     conflicts.push(
       createConflict(
-        'Missing ORM model updates. Every implementation task must include model changes.',
+        'Missing ORM model changes for the current task scope.',
         'high',
         relatedNodeIds,
       ),
     );
   }
-  if (!coverage.ui) {
+  if (shouldRequireSurface(session, 'ui') && !coverage.ui) {
     conflicts.push(
       createConflict(
-        'Missing UI package/file updates. Every implementation task must include UI changes.',
+        'Missing UI package/file changes for the current task scope.',
         'high',
         relatedNodeIds,
       ),
     );
   }
-  if (!coverage.acl) {
+  if (shouldRequireSurface(session, 'acl') && !coverage.acl) {
     conflicts.push(
       createConflict(
-        'Missing ACL updates. Every implementation task must include ACL changes for endpoint coverage.',
+        'Missing ACL updates for backend/access-control scope.',
         'high',
+        relatedNodeIds,
+      ),
+    );
+  }
+  if (shouldRequireSurface(session, 'shared') && !coverage.shared) {
+    conflicts.push(
+      createConflict(
+        'Missing shared project/file changes for the current task scope.',
+        'medium',
         relatedNodeIds,
       ),
     );
@@ -227,28 +248,33 @@ export const buildCoverageConflicts = (
   return conflicts;
 };
 
-export const buildTargetedRepairPrompt = (prompt: string, conflicts: CodexConflict[]) => {
+export const buildTargetedRepairPrompt = (
+  session: AgentWorkspaceSession,
+  prompt: string,
+  conflicts: CodexConflict[],
+) => {
   const lines = conflicts.map((item) => `- ${item.message}`);
+  const expectedSurfaces = [
+    session.task.expectations.backend ? 'backend modules' : '',
+    session.task.expectations.models ? 'ORM models' : '',
+    session.task.expectations.ui ? 'UI files/packages' : '',
+    session.task.expectations.acl ? 'ACL files' : '',
+    session.task.expectations.shared ? 'shared project files' : '',
+  ]
+    .filter(Boolean)
+    .join(', ');
   return `Previous execution has conflicts and must be repaired with targeted operations only.
 Recompute the minimal operation set needed to fix these conflicts:
 ${lines.join('\n')}
 
 Rules:
 - Return JSON only with { "summary", "operations" }.
-- For implementation requests, include full-stack operations: backend + models + UI + ACL.
+- Respect the task scope from the tenant session contract.
+- Required surfaces for this task: ${expectedSurfaces || 'none explicitly required'}.
 - Never use mock/fake/sample/dummy placeholder data.
 - Backend ORM calls must be await adapters.orm('<database>:<key>').
 - UI networking must use @app/datacontext (no fetch/axios/XMLHttpRequest).
-- Provide all required input fields for each tool:
-  - create_ui_package: name, version, code
-  - update_ui_package: id OR (name + version)
-  - update_acl_file: file + content
-  - write_shared_file/delete_shared_file/get_shared_file: (projectId OR projectName) + projectKind + path
-  - create_shared_ui_project/create_shared_module_project: name + version
-  - create_file/update_file/delete_file: path (+ content for create/update)
-- UI file directives may be React-app style:
-  - ui/@app/dashboard/index.jsx => @app/dashboard
-  - ui/@app/dashboard/components/X.jsx => @app/dashboard/components/X
+- Provide all required input fields for each tool.
 - Do not repeat already successful no-op operations.
 
 Original user request:

@@ -35,6 +35,7 @@ import { EditorBottomBar } from '@/components/editor/EditorBottomBar';
 import { EditorTabBar } from '@/components/editor/EditorTabBar';
 import { EditorTabContextMenu } from '@/components/editor/EditorTabContextMenu';
 import { EditorWorkspace } from '@/components/editor/EditorWorkspace';
+import type { LiveWorkspaceFileUpdate } from '@/components/editor/ai-panel/shared';
 import type { AclFileKind } from '@/components/editor/AclSideFormPanel';
 import { EditorModals } from '@/components/editor/EditorModals';
 import {
@@ -120,6 +121,12 @@ import type {
   UIPackageDto,
   AclConfigDto,
 } from '@/components/editor/types';
+import {
+  toModelVirtualPath,
+  toModuleVirtualPath,
+  toSharedVirtualPath,
+  toUiVirtualPath,
+} from '@/lib/assistant/respond-runtime/workspace-paths';
 
 const CORE_API_BASE = process.env.NEXT_PUBLIC_CORE_API_URL?.trim() || '';
 const PREVIEW_EXCEPTION_BATCH_DELAY_MS = 800;
@@ -169,6 +176,17 @@ const normalizeDependencyList = (value: string[] | undefined) =>
 
 const dependencyListsEqual = (left: string[], right: string[]) =>
   left.length === right.length && left.every((value, index) => value === right[index]);
+
+const toEditorSharedVirtualPath = (
+  sharedKind: 'ui' | 'module' | undefined,
+  projectName: string,
+  filePath: string,
+) =>
+  toSharedVirtualPath(
+    sharedKind === 'module' ? 'shared-modules' : 'shared-ui',
+    projectName,
+    filePath,
+  );
 
 declare global {
   interface Window {
@@ -351,6 +369,7 @@ export default function EditorPage() {
   const [rightPaneIds, setRightPaneIds] = useState<string[]>([]);
   const editorAreaRef = useRef<HTMLDivElement | null>(null);
   const assistantPanelWidthRef = useRef(assistantPanelWidth);
+  const liveWorkspaceSnapshotsRef = useRef<Record<string, string>>({});
   const assistantResizeRef = useRef<{
     active: boolean;
     startX: number;
@@ -464,6 +483,84 @@ export default function EditorPage() {
   const sideFile = useMemo(
     () => rightTabs.find((file) => file.id === sideFileId) ?? rightTabs[0] ?? null,
     [rightTabs, sideFileId]
+  );
+  const resolveEditorVirtualPath = useCallback(
+    (file: ActiveFile | null) => {
+      if (!file?.meta) return null;
+      const meta = file.meta;
+      if (meta.kind === 'module') {
+        return toModuleVirtualPath({
+          routePath: meta.routePath,
+          method: meta.method,
+          fileExtension: meta.fileExtension,
+        });
+      }
+      if (meta.kind === 'model') {
+        return toModelVirtualPath({
+          id: meta.backendId,
+          path: meta.path,
+          fileExtension: meta.fileExtension,
+        });
+      }
+      if (meta.kind === 'ui') {
+        const draftPath = normalizeImportedDraftPath(meta.draftFilePath || '');
+        if (draftPath) {
+          return draftPath.startsWith('ui/') ? draftPath : `ui/${draftPath}`;
+        }
+        return toUiVirtualPath({
+          name: meta.name,
+          fileExtension: meta.fileExtension,
+        });
+      }
+      if (meta.kind === 'shared') {
+        return toEditorSharedVirtualPath(meta.sharedKind, sharedProject?.name || '', meta.path);
+      }
+      if (meta.kind === 'acl') {
+        return `modules/acl/${meta.file}.json`;
+      }
+      return null;
+    },
+    [sharedProject?.name]
+  );
+  const handleLiveWorkspaceFileUpdate = useCallback(
+    (update: LiveWorkspaceFileUpdate) => {
+      const targetPath = String(update.path || '').trim();
+      if (!targetPath) return;
+      const matchingFileIds = openFiles
+        .filter((file) => resolveEditorVirtualPath(file) === targetPath)
+        .map((file) => file.id);
+      if (!matchingFileIds.length) return;
+
+      setFileContents((prev) => {
+        const next = { ...prev };
+        for (const fileId of matchingFileIds) {
+          if (liveWorkspaceSnapshotsRef.current[fileId] === undefined) {
+            liveWorkspaceSnapshotsRef.current[fileId] =
+              prev[fileId] ?? savedContentsRef.current[fileId] ?? '';
+          }
+          next[fileId] = update.action === 'delete' ? '' : String(update.content || '');
+        }
+        return next;
+      });
+    },
+    [openFiles, resolveEditorVirtualPath]
+  );
+  const handleLiveWorkspaceRunStateChange = useCallback(
+    (state: 'committed' | 'reverted') => {
+      const snapshots = liveWorkspaceSnapshotsRef.current;
+      liveWorkspaceSnapshotsRef.current = {};
+      if (state !== 'reverted') return;
+      const entries = Object.entries(snapshots);
+      if (!entries.length) return;
+      setFileContents((prev) => {
+        const next = { ...prev };
+        for (const [fileId, content] of entries) {
+          next[fileId] = content;
+        }
+        return next;
+      });
+    },
+    []
   );
   const [tabMenu, setTabMenu] = useState<TabContextMenuState | null>(null);
   const handleTabContextMenu = useCallback(
@@ -2402,6 +2499,8 @@ export default function EditorPage() {
                 aclConfig={aclConfig}
                 onWorkspaceRefresh={refreshWorkspace}
                 onOpenChangeInMainEditor={openAssistantDiffPreview}
+                onLiveWorkspaceFileUpdate={handleLiveWorkspaceFileUpdate}
+                onLiveWorkspaceRunStateChange={handleLiveWorkspaceRunStateChange}
               />
             </aside>
           )}

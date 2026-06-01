@@ -1,8 +1,8 @@
 import type { AssistantChange } from '@/lib/assistant/types';
 import type { AssistantRunEvent } from '@/lib/assistant/orchestrator';
 import { executeCodexOperations, type CodexOperation, type CodexPlan } from './codex-ops';
-import type { WorkspaceContext } from './workspace-context';
-import { resolveAgentType } from './codex-client';
+import type { AgentWorkspaceSession, WorkspaceContext } from './workspace-context';
+import { resolveAgentType, type WorkspaceFileEvent } from './codex-client';
 import { resolveCodexPlan } from './pipeline-plan';
 import {
   buildCodexDagFromEvents,
@@ -22,6 +22,7 @@ type ExecuteCodexPipelineInput = {
   chatId: string;
   messages: Array<{ role: string; content: string }>;
   contextText: string;
+  session: AgentWorkspaceSession;
   systemPrompt: string;
   agentType?: string;
   model?: string;
@@ -31,6 +32,7 @@ type ExecuteCodexPipelineInput = {
   onProgress?: (line: string) => void;
   onChange?: (change: AssistantChange) => void;
   onEvent?: (event: AssistantRunEvent) => void;
+  onWorkspaceFile?: (event: WorkspaceFileEvent) => void;
 };
 
 type ExecuteCodexPipelineResult = {
@@ -113,8 +115,10 @@ export const executeCodexPipeline = async (
           agentType: input.agentType,
           model: input.model,
           workspace: input.workspace,
+          session: input.session,
         },
         progress,
+        input.onWorkspaceFile,
       );
       lastMessage = resolved.message;
       if (resolved.plan) activePlan = resolved.plan;
@@ -163,7 +167,7 @@ export const executeCodexPipeline = async (
       );
 
       const detected = buildCoverageConflicts(
-        latestPrompt,
+        input.session,
         allOperations,
         input.changes,
         opResult.errors,
@@ -194,7 +198,7 @@ export const executeCodexPipeline = async (
         ...input.messages,
         {
           role: 'user',
-          content: buildTargetedRepairPrompt(latestPrompt, detected),
+          content: buildTargetedRepairPrompt(input.session, latestPrompt, detected),
         },
       ];
     }
@@ -221,6 +225,7 @@ export const executeCodexPipeline = async (
         artifacts: [
           { id: `${input.runId}-messages`, kind: 'request_messages', payload: input.messages },
           { id: `${input.runId}-context`, kind: 'workspace_context', payload: input.contextText },
+          { id: `${input.runId}-session`, kind: 'agent_session', payload: input.session },
           { id: `${input.runId}-plan`, kind: 'execution_plan', payload: activePlan ?? {} },
           { id: `${input.runId}-changes`, kind: 'workspace_changes', payload: input.changes },
           {
@@ -264,6 +269,7 @@ export const executeCodexPipeline = async (
       artifacts: [
         { id: `${input.runId}-messages`, kind: 'request_messages', payload: input.messages },
         { id: `${input.runId}-context`, kind: 'workspace_context', payload: input.contextText },
+        { id: `${input.runId}-session`, kind: 'agent_session', payload: input.session },
         { id: `${input.runId}-plan`, kind: 'execution_plan', payload: activePlan ?? {} },
         { id: `${input.runId}-changes`, kind: 'workspace_changes', payload: input.changes },
         { id: `${input.runId}-output`, kind: 'execution_output', payload: finalMessage },
@@ -291,6 +297,7 @@ export const executeCodexPipeline = async (
       artifacts: [
         { id: `${input.runId}-messages`, kind: 'request_messages', payload: input.messages },
         { id: `${input.runId}-context`, kind: 'workspace_context', payload: input.contextText },
+        { id: `${input.runId}-session`, kind: 'agent_session', payload: input.session },
         { id: `${input.runId}-changes`, kind: 'workspace_changes', payload: input.changes },
       ],
       dag,

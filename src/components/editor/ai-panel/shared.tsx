@@ -24,8 +24,15 @@ export type AiMessage = {
   events?: AssistantRunEvent[];
   steps?: string[];
   progress?: string[];
+  liveFiles?: LiveWorkspaceFileUpdate[];
   conflicts?: AssistantRunConflict[];
   rolledBack?: boolean;
+};
+
+export type LiveWorkspaceFileUpdate = {
+  path: string;
+  action: "create" | "edit" | "delete";
+  content?: string;
 };
 
 export type AiSettings = {
@@ -35,6 +42,18 @@ export type AiSettings = {
   provider: string;
   allowClientConfig: boolean;
   watchPreviewExceptions: boolean;
+};
+
+export type AssistantAgentProfile = {
+  key: "orchestrator" | "codex" | "hermes";
+  label: string;
+  description: string;
+  provider: string;
+  model: string;
+  systemPrompt: string;
+  contextPolicy: string[];
+  supportsGatewayRuntime: boolean;
+  supportsDirectProviderConfig: boolean;
 };
 
 export type CodexLoginSession = {
@@ -103,6 +122,8 @@ export type EditorAiPanelProps = {
   aclConfig: AclConfigDto | null;
   onWorkspaceRefresh: () => void;
   onOpenChangeInMainEditor?: (diff: ChangeDiffPayload) => void;
+  onLiveWorkspaceFileUpdate?: (file: LiveWorkspaceFileUpdate) => void;
+  onLiveWorkspaceRunStateChange?: (state: "committed" | "reverted") => void;
 };
 
 export const STORAGE_PREFIX = "editor-ai-chat";
@@ -410,6 +431,35 @@ export const mergeProgressLines = (
   return output;
 };
 
+export const mergeLiveWorkspaceFiles = (
+  existing: LiveWorkspaceFileUpdate[] | undefined,
+  incoming: LiveWorkspaceFileUpdate | LiveWorkspaceFileUpdate[],
+) => {
+  const queue = [...(existing ?? [])];
+  const items = Array.isArray(incoming) ? incoming : [incoming];
+  for (const item of items) {
+    const path = String(item?.path || "").trim();
+    if (!path) continue;
+    const normalized: LiveWorkspaceFileUpdate = {
+      path,
+      action:
+        item.action === "create" || item.action === "delete"
+          ? item.action
+          : "edit",
+      content: typeof item.content === "string" ? item.content : undefined,
+    };
+    const index = queue.findIndex((entry) => entry.path === path);
+    if (index >= 0) {
+      queue.splice(index, 1);
+    }
+    queue.push(normalized);
+  }
+  if (queue.length > 40) {
+    return queue.slice(queue.length - 40);
+  }
+  return queue;
+};
+
 export const buildArchivedRunMessage = (input: {
   message?: string;
   events?: AssistantRunEvent[];
@@ -474,4 +524,3 @@ export function ThinkingIndicator() {
     </div>
   );
 }
-

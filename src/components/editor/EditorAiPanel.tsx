@@ -25,6 +25,8 @@ export function EditorAiPanel({
   aclConfig,
   onWorkspaceRefresh,
   onOpenChangeInMainEditor,
+  onLiveWorkspaceFileUpdate,
+  onLiveWorkspaceRunStateChange,
 }: EditorAiPanelProps) {
   const { success, error: showError } = useToast();
   const [messages, setMessages] = useState<AiMessage[]>([]);
@@ -50,6 +52,8 @@ export function EditorAiPanel({
     systemPrompt,
     setSystemPrompt,
     defaultSystemPrompt,
+    profiles,
+    activeProfile,
   } = useAssistantSettings({
     apiFetch,
     tenantHost,
@@ -127,6 +131,8 @@ export function EditorAiPanel({
     agentType,
     systemPrompt,
     onWorkspaceRefresh,
+    onLiveWorkspaceFileUpdate,
+    onLiveWorkspaceRunStateChange,
     loadRuns,
     success,
     showError,
@@ -139,11 +145,13 @@ export function EditorAiPanel({
   const loadModels = async () => {
     try {
       setLoadingModels(true);
-      const query = settings.allowClientConfig
+      const query = settings.allowClientConfig && activeProfile?.supportsDirectProviderConfig
         ? `?baseUrl=${encodeURIComponent(settings.baseUrl)}&apiKey=${encodeURIComponent(
             settings.apiKey,
           )}&agentType=${encodeURIComponent(agentType)}`
-        : "";
+        : settings.allowClientConfig
+          ? `?agentType=${encodeURIComponent(agentType)}`
+          : "";
       const response = await apiFetch(`/api/assistant/models${query}`);
       setModels(response.models ?? []);
     } catch (err) {
@@ -212,7 +220,7 @@ export function EditorAiPanel({
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex h-[34px] items-center justify-between border-b border-[#2a2d2e] px-3 text-[11px] uppercase text-gray-400">
-        <div className="font-medium tracking-wide text-gray-300">Assistant</div>
+        <div className="font-medium tracking-wide text-gray-300">Agent</div>
         <div
           className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] normal-case ${
             sending
@@ -227,6 +235,16 @@ export function EditorAiPanel({
           />
           {sending ? "Thinking" : "Ready"}
         </div>
+      </div>
+      <div className="flex flex-wrap items-center gap-2 border-b border-[#2a2d2e] bg-[#18191b] px-3 py-2 text-[10px] text-gray-400">
+        <span className="rounded-full border border-[#2a2d2e] bg-[#111214] px-2 py-0.5 text-gray-200">
+          {activeProfile?.label || agentType}
+        </span>
+        <span>tenant {tenantHost || 'none'}</span>
+        <span>file {activeFileContext?.name || 'none'}</span>
+        <span>
+          preview {settings.watchPreviewExceptions ? 'watching exceptions' : 'watch off'}
+        </span>
       </div>
       <div className="flex items-center gap-1 border-b border-[#2a2d2e] bg-[#1f1f1f] px-2 py-1">
         <button
@@ -316,6 +334,8 @@ export function EditorAiPanel({
         loadingModels={loadingModels}
         agentType={agentType}
         setAgentType={setAgentType}
+        profiles={profiles}
+        activeProfile={activeProfile}
         codexAuthLoggedIn={codexAuthLoggedIn}
         codexAuthChecking={codexAuthChecking}
         codexAuthStarting={codexAuthStarting}

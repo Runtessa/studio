@@ -7,6 +7,7 @@ import { CodexSettingsCard } from './CodexSettingsCard';
 import {
   MonacoEditor,
   type AiSettings,
+  type AssistantAgentProfile,
   type CodexGatewayAction,
   type CodexGatewayRuntime,
   type CodexLoginSession,
@@ -23,6 +24,8 @@ type SettingsModalsProps = {
   loadingModels: boolean;
   agentType: string;
   setAgentType: (value: string) => void;
+  profiles: Record<'orchestrator' | 'codex' | 'hermes', AssistantAgentProfile>;
+  activeProfile: AssistantAgentProfile;
   codexAuthLoggedIn: boolean;
   codexAuthChecking: boolean;
   codexAuthStarting: boolean;
@@ -56,6 +59,8 @@ export function SettingsModals({
   loadingModels,
   agentType,
   setAgentType,
+  profiles,
+  activeProfile,
   codexAuthLoggedIn,
   codexAuthChecking,
   codexAuthStarting,
@@ -81,6 +86,7 @@ export function SettingsModals({
   const normalizedAgentType = normalizeAssistantAgentType(agentType, 'orchestrator');
   const isCodexAgent = normalizedAgentType === 'codex';
   const isHermesAgent = normalizedAgentType === 'hermes';
+  const supportsDirectProviderConfig = activeProfile?.supportsDirectProviderConfig ?? true;
 
   return (
     <>
@@ -129,15 +135,25 @@ export function SettingsModals({
               ? 'Client-side overrides are enabled for this tenant.'
               : 'Settings are managed by server env (AI_ALLOW_CLIENT_CONFIG=false).'}
           </div>
+          <div className="rounded-lg border border-[#2a2d2e] bg-[#171717] px-3 py-2 text-xs text-gray-300">
+            <div className="font-medium text-gray-100">{activeProfile?.label || normalizedAgentType}</div>
+            <div className="mt-1 text-gray-400">{activeProfile?.description || 'No profile description.'}</div>
+            {activeProfile?.contextPolicy?.length ? (
+              <div className="mt-2 space-y-1 text-[11px] text-gray-300">
+                {activeProfile.contextPolicy.map((entry) => (
+                  <div key={entry}>- {entry}</div>
+                ))}
+              </div>
+            ) : null}
+          </div>
           <Select
             label="Agent"
             value={agentType}
             onChange={(event) => setAgentType(String(event.target.value || 'orchestrator'))}
-            options={[
-              { label: 'Hermes', value: 'hermes' },
-              { label: 'Codex', value: 'codex' },
-              { label: 'Orchestrator', value: 'orchestrator' },
-            ]}
+            options={Object.values(profiles).map((profile) => ({
+              label: profile.label,
+              value: profile.key,
+            }))}
             disabled={!settings.allowClientConfig}
           />
           {isHermesAgent ? (
@@ -165,7 +181,7 @@ export function SettingsModals({
               Captures runtime/UI/API errors from preview iframe while you test.
             </div>
           </div>
-          {!isCodexAgent ? (
+          {supportsDirectProviderConfig ? (
             <>
               <Input
                 label="Base URL"
@@ -208,19 +224,21 @@ export function SettingsModals({
             }
             disabled={!settings.allowClientConfig && !settings.model}
           />
-          <Input
-            label="Provider override (optional)"
-            value={settings.provider}
-            onChange={(event) =>
-              setSettings((prev) => ({ ...prev, provider: event.target.value }))
-            }
-            placeholder="openai"
-            disabled={!settings.allowClientConfig}
-          />
+          {supportsDirectProviderConfig ? (
+            <Input
+              label="Provider override (optional)"
+              value={settings.provider}
+              onChange={(event) =>
+                setSettings((prev) => ({ ...prev, provider: event.target.value }))
+              }
+              placeholder="openai"
+              disabled={!settings.allowClientConfig}
+            />
+          ) : null}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <div className="text-xs font-medium text-textPrimary">
-                System Prompt
+                Advanced Policy Override
               </div>
               <div className="flex items-center gap-1">
                 <Button
@@ -257,7 +275,7 @@ export function SettingsModals({
                 value={systemPrompt}
                 onChange={(value) => setSystemPrompt(String(value ?? ''))}
                 options={{
-                  readOnly: false,
+                  readOnly: !settings.allowClientConfig,
                   minimap: { enabled: false },
                   wordWrap: 'on',
                   lineNumbers: 'on',
@@ -273,7 +291,7 @@ export function SettingsModals({
       <Modal
         open={promptMaximized}
         onClose={() => setPromptMaximized(false)}
-        title="System Prompt"
+        title="Advanced Policy Override"
         size="xl"
         footer={
           <>
@@ -306,7 +324,7 @@ export function SettingsModals({
             value={systemPrompt}
             onChange={(value) => setSystemPrompt(String(value ?? ''))}
             options={{
-              readOnly: false,
+              readOnly: !settings.allowClientConfig,
               minimap: { enabled: true },
               wordWrap: 'on',
               lineNumbers: 'on',

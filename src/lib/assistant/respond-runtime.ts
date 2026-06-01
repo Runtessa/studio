@@ -16,7 +16,12 @@ import {
   resolvePreviewExceptionsLimit,
   shouldWatchPreviewFromPrompt,
 } from '@/lib/assistant/respond-runtime/run-normalization';
-import { buildContextText, type WorkspaceContext } from '@/lib/assistant/respond-runtime/workspace-context';
+import {
+  buildAgentWorkspaceSession,
+  buildContextText,
+  type AgentWorkspaceSession,
+  type WorkspaceContext,
+} from '@/lib/assistant/respond-runtime/workspace-context';
 import { normalizeAssistantAgentType } from '@/lib/assistant/agent-type';
 
 const resolveCodexModel = (
@@ -39,6 +44,7 @@ export {
   shouldWatchPreviewFromPrompt,
   resolvePreviewExceptionsLimit,
   buildContextText,
+  buildAgentWorkspaceSession,
   createRunId,
   buildRunName,
   normalizeSystemPrompt,
@@ -49,6 +55,7 @@ export {
 
 export type {
   WorkspaceContext,
+  AgentWorkspaceSession,
   CodexConflict,
   ExecuteCodexPipelineInput,
   ExecuteCodexPipelineResult,

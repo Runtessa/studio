@@ -11,6 +11,13 @@ import {
   isCodexFamilyAgentType,
   normalizeAssistantAgentType,
 } from '@/lib/assistant/agent-type';
+import type { AgentWorkspaceSession } from './workspace-context';
+
+export type WorkspaceFileEvent = {
+  path: string;
+  action: 'create' | 'edit' | 'delete';
+  content?: string;
+};
 
 const resolveAgentType = () => normalizeAssistantAgentType(process.env.AGENT_TYPE, 'orchestrator');
 
@@ -34,19 +41,52 @@ const resolveCodexTimeoutMs = () => {
 
 const resolveCodexGatewayUrl = () => resolveCodexGatewayBase();
 
+const buildExpectedSurfaceContract = (session?: AgentWorkspaceSession) => {
+  const expectations = session?.task.expectations;
+  if (!expectations) {
+    return '- If the request requires workspace changes, output at least one operation.';
+  }
+  const expected = [
+    expectations.backend ? 'backend modules' : '',
+    expectations.models ? 'ORM models' : '',
+    expectations.ui ? 'UI files/packages' : '',
+    expectations.acl ? 'ACL files' : '',
+    expectations.shared ? 'shared project files' : '',
+  ].filter(Boolean);
+  if (!expected.length) {
+    return '- If the request requires workspace changes, output at least one operation.';
+  }
+  return `- Required mutation coverage for this task: ${expected.join(', ')}.`;
+};
+
+const buildGatewayWorkspaceSystemPrompt = (
+  systemPrompt: string,
+  session?: AgentWorkspaceSession,
+) => `${systemPrompt}
+
+GATEWAY WORKSPACE MODE:
+- You are running inside a hydrated tenant workspace on disk.
+- Read and edit files directly in the workspace instead of returning JSON tool operations.
+- The workspace includes .idp/manifest.json, .idp/task-state.json, and .idp/AGENTS.md.
+- Follow the task scope described there and keep edits minimal.
+- ${buildExpectedSurfaceContract(session).slice(2)}
+- When you finish, reply with a concise human summary of what you changed.
+- Do not return JSON unless the user explicitly asks for JSON.`;
+
 const buildCodexPrompt = (
   messages: Array<{ role: string; content: string }>,
   contextText: string,
   systemPrompt: string,
+  session?: AgentWorkspaceSession,
 ) => {
   const codexRuntimeContract = `CODEX HOST EXECUTION CONTRACT (NON-NEGOTIABLE):
 - You do NOT have callable tools in this Codex run.
-- The host has ALREADY executed workspace/ACL discovery and provided full outputs in FULL WORKSPACE CONTEXT.
+- The host has ALREADY executed workspace/ACL discovery and provided a full TENANT SESSION CONTRACT.
 - Never ask for list_workspace/get_acl_config/tool availability; never ask user to provide those outputs again.
 - Your job is to RETURN JSON operations for the host to execute.
-- If the request requires file/workspace changes, output at least one operation.
+- Respect the task expectations inside the session contract. Do not invent broader scope than required.
+- ${buildExpectedSurfaceContract(session).slice(2)}
 - If the request is purely conversational, operations may be empty.
-- For implementation requests, always return full-stack operations that cover backend modules + ORM models + UI updates + ACL updates.
 - No mock/fake/sample/dummy data is allowed anywhere.
 - Backend ORM usage rule: only await adapters.orm('<database>:<key>') (bare keys like "pga1" are invalid).
 - UI data-access rule: use @app/datacontext (never fetch/axios/XMLHttpRequest).
@@ -75,6 +115,9 @@ create_file, update_file, delete_file
 `;
 
   const history = messages.map((msg) => `[${msg.role}] ${msg.content}`).join('\n\n');
+  const activeFileLine = session?.workspace.activeFile?.path
+    ? `- Active file in IDE: ${session.workspace.activeFile.path}`
+    : '- Active file in IDE: none';
   return `${systemPrompt}
 
 ${codexRuntimeContract}
@@ -84,6 +127,7 @@ RUNTIME MODE:
 - Return ONLY valid JSON (no markdown, no code fences).
 - Prefer concise, direct output.
 - If file changes are requested, produce tool operations to apply them.
+${activeFileLine}
 
 OUTPUT CONTRACT (strict JSON object):
 {
@@ -106,7 +150,7 @@ ALLOWED TOOL IDS:
 - get_module, get_model, get_ui_package, get_shared_file
 - create_file, update_file, delete_file
 
-FULL WORKSPACE CONTEXT:
+TENANT SESSION CONTRACT:
 ${contextText}
 
 CHAT HISTORY:
@@ -123,10 +167,12 @@ export type CodexExecInput = {
   chatId?: string;
   messages: Array<{ role: string; content: string }>;
   contextText: string;
+  session?: AgentWorkspaceSession;
   systemPrompt: string;
   agentType?: string;
   model?: string;
   onLine?: (line: string) => void;
+  onWorkspaceFile?: (event: WorkspaceFileEvent) => void;
 };
 
 const normalizeBaseUrl = (value?: string | null) => String(value || '').trim().replace(/\/+$/, '');
@@ -188,7 +234,12 @@ const executeHermesProxy = async (input: CodexExecInput) => {
     throw new Error('HERMES_MODEL is not configured');
   }
 
-  const prompt = buildCodexPrompt(input.messages, input.contextText, input.systemPrompt);
+  const prompt = buildCodexPrompt(
+    input.messages,
+    input.contextText,
+    input.systemPrompt,
+    input.session,
+  );
   input.onLine?.(`[hermes] proxy request started (${model})`);
 
   const controller = new AbortController();
@@ -231,7 +282,12 @@ const executeHermesProxy = async (input: CodexExecInput) => {
 
 const executeCodexCli = async (input: CodexExecInput) => {
   const outputFile = path.join(tmpdir(), `idp-codex-last-${input.runId}.txt`);
-  const prompt = buildCodexPrompt(input.messages, input.contextText, input.systemPrompt);
+  const prompt = buildCodexPrompt(
+    input.messages,
+    input.contextText,
+    input.systemPrompt,
+    input.session,
+  );
   const runOnce = async (model?: string) =>
     new Promise<{
       stdoutText: string;
@@ -347,8 +403,6 @@ const executeCodexGateway = async (input: CodexExecInput) => {
   if (!baseUrl) {
     throw new Error('AGENT_CODEX_GATEWAY_URL is not configured');
   }
-  const gatewayMode = resolveCodexGatewayModeValue();
-  const gatewayCwd = gatewayMode === 'container' ? '/workspace' : resolveCodexCwd();
 
   const response = await fetch(`${baseUrl}/v1/exec`, {
     method: 'POST',
@@ -357,10 +411,10 @@ const executeCodexGateway = async (input: CodexExecInput) => {
       userId: String(input.userId),
       chatId: input.chatId || 'default',
       prompt: getLatestUserPrompt(input.messages),
-      fullPrompt: buildCodexPrompt(input.messages, input.contextText, input.systemPrompt),
+      systemPrompt: buildGatewayWorkspaceSystemPrompt(input.systemPrompt, input.session),
+      agentSession: input.session,
       model: input.model,
       stream: true,
-      cwd: gatewayCwd,
     }),
   });
 
@@ -379,6 +433,8 @@ const executeCodexGateway = async (input: CodexExecInput) => {
   let doneError = '';
   let doneOk = false;
   let doneSignal = '';
+  let changedFiles: Array<{ path: string; action: 'create' | 'edit' | 'delete'; content?: string }> =
+    [];
 
   const processBlock = (block: string) => {
     const lines = block.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
@@ -420,12 +476,38 @@ const executeCodexGateway = async (input: CodexExecInput) => {
       if (line) input.onLine?.(`[stderr] ${line}`);
       return;
     }
+    if (eventName === 'workspace-file') {
+      const filePath = String(payload?.path || '').trim();
+      const action =
+        payload?.action === 'create' || payload?.action === 'delete' ? payload.action : 'edit';
+      const content = typeof payload?.content === 'string' ? payload.content : undefined;
+      if (filePath) {
+        input.onLine?.(`[workspace] ${action} ${filePath}`);
+        input.onWorkspaceFile?.({ path: filePath, action, content });
+      }
+      return;
+    }
     if (eventName === 'done') {
       done = true;
       doneOk = Boolean(payload?.ok);
       doneMessage = String(payload?.message || '').trim();
       doneError = String(payload?.error || '').trim();
       doneSignal = String(payload?.signal || '').trim();
+      changedFiles = Array.isArray(payload?.changedFiles)
+        ? payload.changedFiles
+            .map((item: any) => ({
+              path: String(item?.path || '').trim(),
+              action:
+                item?.action === 'create' || item?.action === 'delete' ? item.action : 'edit',
+              content: typeof item?.content === 'string' ? item.content : undefined,
+            }))
+            .filter(
+              (
+                item: { path: string; action: 'create' | 'edit' | 'delete'; content?: string },
+              ): item is { path: string; action: 'create' | 'edit' | 'delete'; content?: string } =>
+                Boolean(item.path),
+            )
+        : [];
     }
   };
 
@@ -459,6 +541,7 @@ const executeCodexGateway = async (input: CodexExecInput) => {
 
   return {
     message: doneMessage || 'Codex completed with no response text.',
+    workspaceDiff: changedFiles,
   };
 };
 
