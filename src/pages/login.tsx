@@ -41,7 +41,8 @@ export default function Login() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Login failed");
       setToken(data.sessionToken);
-      router.replace("/dashboard");
+      const next = typeof router.query.next === "string" && router.query.next.trim() ? router.query.next : "/dashboard";
+      router.replace(next);
     } catch (err: any) {
       setError(err.message);
     } finally {
