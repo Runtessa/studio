@@ -2,7 +2,7 @@ import type { AssistantChange } from '@/lib/assistant/types';
 import type { AssistantRunEvent } from '@/lib/assistant/orchestrator';
 import { executeCodexOperations, type CodexOperation, type CodexPlan } from './codex-ops';
 import type { AgentWorkspaceSession, WorkspaceContext } from './workspace-context';
-import { resolveAgentType, type WorkspaceFileEvent } from './codex-client';
+import type { WorkspaceFileEvent } from './codex-client';
 import { resolveCodexPlan } from './pipeline-plan';
 import {
   buildCodexDagFromEvents,
@@ -24,7 +24,6 @@ type ExecuteCodexPipelineInput = {
   contextText: string;
   session: AgentWorkspaceSession;
   systemPrompt: string;
-  agentType?: string;
   model?: string;
   tools: Record<string, any>;
   workspace: WorkspaceContext;
@@ -84,7 +83,7 @@ export const executeCodexPipeline = async (
 
   emitEvent('RUN_REQUESTED', 'S0_INIT', {
     mode: 'codex',
-    agentType: input.agentType || resolveAgentType(),
+    agentType: 'codex',
   });
   emitEvent('CONTEXT_CAPTURED', 'S0_INIT');
   emitEvent('EXECUTION_STARTED', 'S2_EXTRACTION');
@@ -95,6 +94,7 @@ export const executeCodexPipeline = async (
   let lastMessage = '';
   let activePlan: CodexPlan | null = null;
   let allOperations: CodexOperation[] = [];
+  let directWorkspaceEdits: WorkspaceFileEvent[] = [];
   let totalLogs: string[] = [];
   let totalErrors: string[] = [];
   let totalExecuted = 0;
@@ -112,7 +112,6 @@ export const executeCodexPipeline = async (
           messages: currentMessages,
           contextText: input.contextText,
           systemPrompt: input.systemPrompt,
-          agentType: input.agentType,
           model: input.model,
           workspace: input.workspace,
           session: input.session,
@@ -123,6 +122,9 @@ export const executeCodexPipeline = async (
       lastMessage = resolved.message;
       if (resolved.plan) activePlan = resolved.plan;
       allOperations = allOperations.concat(resolved.operations);
+      if (resolved.directWorkspaceEdits?.length) {
+        directWorkspaceEdits = directWorkspaceEdits.concat(resolved.directWorkspaceEdits);
+      }
 
       if (resolved.operations.length > 0) {
         emitEvent('PLAN_READY', 'S1_ANALYSIS', {
@@ -157,6 +159,14 @@ export const executeCodexPipeline = async (
             )
           : { executed: 0, mutationOps: 0, logs: [] as string[], errors: [] as string[] };
 
+      if (resolved.directWorkspaceEdits?.length) {
+        totalLogs = totalLogs.concat(
+          resolved.directWorkspaceEdits.map(
+            (item) => `[repo] ${item.action} ${item.path}`,
+          ),
+        );
+      }
+
       totalExecuted += opResult.executed;
       totalMutationOps += opResult.mutationOps;
       totalLogs = totalLogs.concat(opResult.logs);
@@ -170,6 +180,7 @@ export const executeCodexPipeline = async (
         input.session,
         allOperations,
         input.changes,
+        directWorkspaceEdits,
         opResult.errors,
         [],
       );

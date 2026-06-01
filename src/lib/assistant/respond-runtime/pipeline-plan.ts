@@ -13,6 +13,7 @@ type CodexResolvedPlan = {
   message: string;
   plan: CodexPlan | null;
   operations: CodexOperation[];
+  directWorkspaceEdits?: WorkspaceFileEvent[];
 };
 
 const mapWorkspaceDiffToOperations = (
@@ -84,7 +85,6 @@ type ResolvePlanInput = {
   messages: Array<{ role: string; content: string }>;
   contextText: string;
   systemPrompt: string;
-  agentType?: string;
   model?: string;
   workspace: WorkspaceContext;
   session: AgentWorkspaceSession;
@@ -104,7 +104,6 @@ export const resolveCodexPlan = async (
     contextText: input.contextText,
     session: input.session,
     systemPrompt: input.systemPrompt,
-    agentType: input.agentType,
     model: input.model,
     onLine: (line) => {
       const formatted = formatCodexProgressLine(line);
@@ -124,7 +123,18 @@ export const resolveCodexPlan = async (
       }>)
     : [];
   if (workspaceDiff.length) {
-    onProgress?.(`[codex] gateway workspace diff produced ${workspaceDiff.length} file change(s)`);
+    const workspaceScope = (codex as any).workspaceScope === 'repo' ? 'repo' : 'tenant';
+    onProgress?.(
+      `[codex] gateway ${workspaceScope} workspace diff produced ${workspaceDiff.length} file change(s)`,
+    );
+    if (workspaceScope === 'repo') {
+      return {
+        message: codex.message,
+        plan: null,
+        operations: [],
+        directWorkspaceEdits: workspaceDiff,
+      };
+    }
     return {
       message: codex.message,
       plan: null,
@@ -153,7 +163,6 @@ export const resolveCodexPlan = async (
       contextText: input.contextText,
       session: input.session,
       systemPrompt: input.systemPrompt,
-      agentType: input.agentType,
       model: input.model,
       onLine: (line) => {
         const formatted = formatCodexProgressLine(line);

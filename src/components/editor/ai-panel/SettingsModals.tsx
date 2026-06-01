@@ -1,6 +1,5 @@
 import { FiDownload, FiMaximize2 } from 'react-icons/fi';
 import { Modal } from '@/components/ui/Modal';
-import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Button } from '@/components/ui/Button';
 import { CodexSettingsCard } from './CodexSettingsCard';
@@ -12,7 +11,6 @@ import {
   type CodexGatewayRuntime,
   type CodexLoginSession,
 } from './shared';
-import { normalizeAssistantAgentType } from '@/lib/assistant/agent-type';
 
 type SettingsModalsProps = {
   settingsOpen: boolean;
@@ -22,10 +20,7 @@ type SettingsModalsProps = {
   loadModels: () => void;
   models: string[];
   loadingModels: boolean;
-  agentType: string;
-  setAgentType: (value: string) => void;
-  profiles: Record<'orchestrator' | 'codex' | 'hermes', AssistantAgentProfile>;
-  activeProfile: AssistantAgentProfile;
+  profile: AssistantAgentProfile;
   codexAuthLoggedIn: boolean;
   codexAuthChecking: boolean;
   codexAuthStarting: boolean;
@@ -57,10 +52,7 @@ export function SettingsModals({
   loadModels,
   models,
   loadingModels,
-  agentType,
-  setAgentType,
-  profiles,
-  activeProfile,
+  profile,
   codexAuthLoggedIn,
   codexAuthChecking,
   codexAuthStarting,
@@ -83,26 +75,16 @@ export function SettingsModals({
   downloadTenantDump,
   exportingDump,
 }: SettingsModalsProps) {
-  const normalizedAgentType = normalizeAssistantAgentType(agentType, 'orchestrator');
-  const isCodexAgent = normalizedAgentType === 'codex';
-  const isHermesAgent = normalizedAgentType === 'hermes';
-  const supportsDirectProviderConfig = activeProfile?.supportsDirectProviderConfig ?? true;
-
   return (
     <>
       <Modal
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
-        title="Assistant settings"
+        title="Agent settings"
         size="md"
         footer={
           <>
-            <Button
-              variant="secondary"
-              onClick={() => {
-                loadModels();
-              }}
-            >
+            <Button variant="secondary" onClick={loadModels}>
               Refresh models
             </Button>
             <Button variant="primary" onClick={() => setSettingsOpen(false)}>
@@ -112,56 +94,38 @@ export function SettingsModals({
         }
       >
         <div className="space-y-4">
-          {isCodexAgent ? (
-            <CodexSettingsCard
-              codexAuthLoggedIn={codexAuthLoggedIn}
-              codexAuthChecking={codexAuthChecking}
-              codexAuthStarting={codexAuthStarting}
-              codexAuthStatus={codexAuthStatus}
-              codexSession={codexSession}
-              codexRuntime={codexRuntime}
-              codexRuntimeAction={codexRuntimeAction}
-              codexRuntimeStatus={codexRuntimeStatus}
-              loadCodexAuthStatus={() => loadCodexAuthStatus()}
-              startCodexLogin={startCodexLogin}
-              sendCodexCallback={sendCodexCallback}
-              logoutCodex={logoutCodex}
-              loadCodexRuntime={() => loadCodexRuntime()}
-              runCodexRuntimeAction={runCodexRuntimeAction}
-            />
-          ) : null}
+          <CodexSettingsCard
+            codexAuthLoggedIn={codexAuthLoggedIn}
+            codexAuthChecking={codexAuthChecking}
+            codexAuthStarting={codexAuthStarting}
+            codexAuthStatus={codexAuthStatus}
+            codexSession={codexSession}
+            codexRuntime={codexRuntime}
+            codexRuntimeAction={codexRuntimeAction}
+            codexRuntimeStatus={codexRuntimeStatus}
+            loadCodexAuthStatus={() => loadCodexAuthStatus()}
+            startCodexLogin={startCodexLogin}
+            sendCodexCallback={sendCodexCallback}
+            logoutCodex={logoutCodex}
+            loadCodexRuntime={() => loadCodexRuntime()}
+            runCodexRuntimeAction={runCodexRuntimeAction}
+          />
           <div className="rounded-lg border border-borderSubtle bg-bgApp px-3 py-2 text-xs text-textMuted">
             {settings.allowClientConfig
-              ? 'Client-side overrides are enabled for this tenant.'
-              : 'Settings are managed by server env (AI_ALLOW_CLIENT_CONFIG=false).'}
+              ? 'Client-side model override is enabled for this tenant.'
+              : 'Model and policy are managed by server env (AI_ALLOW_CLIENT_CONFIG=false).'}
           </div>
           <div className="rounded-lg border border-[#2a2d2e] bg-[#171717] px-3 py-2 text-xs text-gray-300">
-            <div className="font-medium text-gray-100">{activeProfile?.label || normalizedAgentType}</div>
-            <div className="mt-1 text-gray-400">{activeProfile?.description || 'No profile description.'}</div>
-            {activeProfile?.contextPolicy?.length ? (
+            <div className="font-medium text-gray-100">{profile.label || 'Codex'}</div>
+            <div className="mt-1 text-gray-400">{profile.description || 'No profile description.'}</div>
+            {profile.contextPolicy.length ? (
               <div className="mt-2 space-y-1 text-[11px] text-gray-300">
-                {activeProfile.contextPolicy.map((entry) => (
+                {profile.contextPolicy.map((entry) => (
                   <div key={entry}>- {entry}</div>
                 ))}
               </div>
             ) : null}
           </div>
-          <Select
-            label="Agent"
-            value={agentType}
-            onChange={(event) => setAgentType(String(event.target.value || 'orchestrator'))}
-            options={Object.values(profiles).map((profile) => ({
-              label: profile.label,
-              value: profile.key,
-            }))}
-            disabled={!settings.allowClientConfig}
-          />
-          {isHermesAgent ? (
-            <div className="rounded-lg border border-[#2a2d2e] bg-[#171717] px-3 py-2 text-xs text-gray-300">
-              Hermes mode uses standard provider/model settings below and does not use Codex
-              login/container runtime controls.
-            </div>
-          ) : null}
           <div className="rounded-lg border border-[#2a2d2e] bg-[#171717] px-3 py-2 text-xs text-gray-300">
             <label className="flex items-center gap-2">
               <input
@@ -181,29 +145,6 @@ export function SettingsModals({
               Captures runtime/UI/API errors from preview iframe while you test.
             </div>
           </div>
-          {supportsDirectProviderConfig ? (
-            <>
-              <Input
-                label="Base URL"
-                value={settings.baseUrl}
-                onChange={(event) =>
-                  setSettings((prev) => ({ ...prev, baseUrl: event.target.value }))
-                }
-                placeholder="https://api.openai.com/v1"
-                disabled={!settings.allowClientConfig}
-              />
-              <Input
-                label="API Key"
-                type="password"
-                value={settings.apiKey}
-                onChange={(event) =>
-                  setSettings((prev) => ({ ...prev, apiKey: event.target.value }))
-                }
-                placeholder="sk-..."
-                disabled={!settings.allowClientConfig}
-              />
-            </>
-          ) : null}
           <Select
             label="Model"
             value={settings.model}
@@ -224,22 +165,9 @@ export function SettingsModals({
             }
             disabled={!settings.allowClientConfig && !settings.model}
           />
-          {supportsDirectProviderConfig ? (
-            <Input
-              label="Provider override (optional)"
-              value={settings.provider}
-              onChange={(event) =>
-                setSettings((prev) => ({ ...prev, provider: event.target.value }))
-              }
-              placeholder="openai"
-              disabled={!settings.allowClientConfig}
-            />
-          ) : null}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <div className="text-xs font-medium text-textPrimary">
-                Advanced Policy Override
-              </div>
+              <div className="text-xs font-medium text-textPrimary">Advanced Policy Override</div>
               <div className="flex items-center gap-1">
                 <Button
                   variant="secondary"
@@ -295,10 +223,7 @@ export function SettingsModals({
         size="xl"
         footer={
           <>
-            <Button
-              variant="secondary"
-              onClick={() => setSystemPrompt(defaultSystemPrompt || '')}
-            >
+            <Button variant="secondary" onClick={() => setSystemPrompt(defaultSystemPrompt || '')}>
               Reset default
             </Button>
             <Button
@@ -325,11 +250,11 @@ export function SettingsModals({
             onChange={(value) => setSystemPrompt(String(value ?? ''))}
             options={{
               readOnly: !settings.allowClientConfig,
-              minimap: { enabled: true },
+              minimap: { enabled: false },
               wordWrap: 'on',
               lineNumbers: 'on',
               scrollBeyondLastLine: false,
-              fontSize: 12,
+              fontSize: 13,
             }}
           />
         </div>

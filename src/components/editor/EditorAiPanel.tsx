@@ -36,24 +36,17 @@ export function EditorAiPanel({
   const [models, setModels] = useState<string[]>([]);
   const [loadingModels, setLoadingModels] = useState(false);
   const [showAllRuns, setShowAllRuns] = useState(false);
-  const [activeMainTab, setActiveMainTab] = useState<"chats" | "runs">(
-    "chats",
-  );
+  const [activeMainTab, setActiveMainTab] = useState<"chats" | "runs">("chats");
   const [promptMaximized, setPromptMaximized] = useState(false);
   const [exportingDump, setExportingDump] = useState(false);
-  const [openChangeDiffKeys, setOpenChangeDiffKeys] = useState<
-    Record<string, boolean>
-  >({});
+  const [openChangeDiffKeys, setOpenChangeDiffKeys] = useState<Record<string, boolean>>({});
   const {
-    agentType,
-    setAgentType,
     settings,
     setSettings,
     systemPrompt,
     setSystemPrompt,
     defaultSystemPrompt,
-    profiles,
-    activeProfile,
+    profile,
   } = useAssistantSettings({
     apiFetch,
     tenantHost,
@@ -92,7 +85,6 @@ export function EditorAiPanel({
     logoutCodex,
   } = useCodexRuntime({
     apiFetch,
-    agentType,
     settingsOpen,
     success,
     showError,
@@ -100,8 +92,7 @@ export function EditorAiPanel({
 
   const activeFileContext = useMemo(() => {
     if (!activeFile) return null;
-    const content =
-      fileContents[activeFile.id] ?? savedContents[activeFile.id] ?? "";
+    const content = fileContents[activeFile.id] ?? savedContents[activeFile.id] ?? "";
     return {
       id: activeFile.id,
       name: activeFile.name,
@@ -128,7 +119,6 @@ export function EditorAiPanel({
     activeFileContext,
     aclConfig,
     settings,
-    agentType,
     systemPrompt,
     onWorkspaceRefresh,
     onLiveWorkspaceFileUpdate,
@@ -145,17 +135,10 @@ export function EditorAiPanel({
   const loadModels = async () => {
     try {
       setLoadingModels(true);
-      const query = settings.allowClientConfig && activeProfile?.supportsDirectProviderConfig
-        ? `?baseUrl=${encodeURIComponent(settings.baseUrl)}&apiKey=${encodeURIComponent(
-            settings.apiKey,
-          )}&agentType=${encodeURIComponent(agentType)}`
-        : settings.allowClientConfig
-          ? `?agentType=${encodeURIComponent(agentType)}`
-          : "";
-      const response = await apiFetch(`/api/assistant/models${query}`);
+      const response = await apiFetch('/api/assistant/models');
       setModels(response.models ?? []);
     } catch (err) {
-      showError((err as Error).message || "Failed to load models");
+      showError((err as Error).message || 'Failed to load models');
     } finally {
       setLoadingModels(false);
     }
@@ -172,8 +155,8 @@ export function EditorAiPanel({
   const handleRollback = async (message: AiMessage) => {
     if (!message.changes?.length) return;
     try {
-      await apiFetch("/api/assistant/rollback", {
-        method: "POST",
+      await apiFetch('/api/assistant/rollback', {
+        method: 'POST',
         body: { changes: message.changes },
       });
       setMessages((prev) =>
@@ -183,35 +166,33 @@ export function EditorAiPanel({
       );
       onWorkspaceRefresh();
       loadRuns();
-      success("Rolled back assistant changes");
+      success('Rolled back assistant changes');
     } catch (err) {
-      showError((err as Error).message || "Rollback failed");
+      showError((err as Error).message || 'Rollback failed');
     }
   };
 
   const downloadTenantDump = async () => {
     try {
       setExportingDump(true);
-      const result = await apiFetch("/api/assistant/tenant-dump");
-      const markdown = String(result?.markdown || "");
-      const filename = String(
-        result?.filename || `tenant-dump-${Date.now()}.md`,
-      );
+      const result = await apiFetch('/api/assistant/tenant-dump');
+      const markdown = String(result?.markdown || '');
+      const filename = String(result?.filename || `tenant-dump-${Date.now()}.md`);
       if (!markdown.trim()) {
-        throw new Error("Tenant dump is empty");
+        throw new Error('Tenant dump is empty');
       }
-      const blob = new Blob([markdown], { type: "text/markdown;charset=utf-8" });
+      const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8' });
       const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
+      const link = document.createElement('a');
       link.href = url;
       link.download = filename;
       document.body.appendChild(link);
       link.click();
       link.remove();
       URL.revokeObjectURL(url);
-      success("Tenant dump generated");
+      success('Tenant dump generated');
     } catch (err) {
-      showError((err as Error).message || "Failed to generate tenant dump");
+      showError((err as Error).message || 'Failed to generate tenant dump');
     } finally {
       setExportingDump(false);
     }
@@ -224,55 +205,53 @@ export function EditorAiPanel({
         <div
           className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] normal-case ${
             sending
-              ? "border-[#2a2d2e] bg-[#1f1f1f] text-gray-300"
-              : "border-[#2a2d2e] bg-[#1f1f1f] text-gray-400"
+              ? 'border-[#2a2d2e] bg-[#1f1f1f] text-gray-300'
+              : 'border-[#2a2d2e] bg-[#1f1f1f] text-gray-400'
           }`}
         >
           <span
             className={`h-1.5 w-1.5 rounded-full ${
-              sending ? "bg-[#0b5b96] animate-pulse" : "bg-gray-500"
+              sending ? 'bg-[#0b5b96] animate-pulse' : 'bg-gray-500'
             }`}
           />
-          {sending ? "Thinking" : "Ready"}
+          {sending ? 'Thinking' : 'Ready'}
         </div>
       </div>
       <div className="flex flex-wrap items-center gap-2 border-b border-[#2a2d2e] bg-[#18191b] px-3 py-2 text-[10px] text-gray-400">
         <span className="rounded-full border border-[#2a2d2e] bg-[#111214] px-2 py-0.5 text-gray-200">
-          {activeProfile?.label || agentType}
+          {profile.label || 'Codex'}
         </span>
         <span>tenant {tenantHost || 'none'}</span>
         <span>file {activeFileContext?.name || 'none'}</span>
-        <span>
-          preview {settings.watchPreviewExceptions ? 'watching exceptions' : 'watch off'}
-        </span>
+        <span>preview {settings.watchPreviewExceptions ? 'watching exceptions' : 'watch off'}</span>
       </div>
       <div className="flex items-center gap-1 border-b border-[#2a2d2e] bg-[#1f1f1f] px-2 py-1">
         <button
           type="button"
           className={`rounded px-2 py-1 text-[11px] ${
-            activeMainTab === "chats"
-              ? "bg-[#2a2d2e] text-gray-100"
-              : "text-gray-400 hover:bg-[#2a2d2e] hover:text-gray-200"
+            activeMainTab === 'chats'
+              ? 'bg-[#2a2d2e] text-gray-100'
+              : 'text-gray-400 hover:bg-[#2a2d2e] hover:text-gray-200'
           }`}
-          onClick={() => setActiveMainTab("chats")}
+          onClick={() => setActiveMainTab('chats')}
         >
           Chats
         </button>
         <button
           type="button"
           className={`rounded px-2 py-1 text-[11px] ${
-            activeMainTab === "runs"
-              ? "bg-[#2a2d2e] text-gray-100"
-              : "text-gray-400 hover:bg-[#2a2d2e] hover:text-gray-200"
+            activeMainTab === 'runs'
+              ? 'bg-[#2a2d2e] text-gray-100'
+              : 'text-gray-400 hover:bg-[#2a2d2e] hover:text-gray-200'
           }`}
-          onClick={() => setActiveMainTab("runs")}
+          onClick={() => setActiveMainTab('runs')}
         >
           Runs
         </button>
       </div>
 
       <div className="flex-1 space-y-3 overflow-auto bg-[#252526] p-3 text-[12px] text-gray-200">
-        {activeMainTab === "runs" ? (
+        {activeMainTab === 'runs' ? (
           <RunsPanel
             runs={runs}
             loadingRuns={loadingRuns}
@@ -284,8 +263,7 @@ export function EditorAiPanel({
           />
         ) : messages.length === 0 ? (
           <div className="flex h-full items-center justify-center text-sm text-gray-400">
-            Ask the assistant to create or edit modules, UI entities, ACL, or
-            shared files.
+            Ask Codex to create or edit modules, UI entities, ACL, or shared files.
           </div>
         ) : (
           messages.map((msg) => (
@@ -321,7 +299,7 @@ export function EditorAiPanel({
           setMessages([]);
           setChatSessionId(createChatSessionId());
         }}
-        onOpenChat={() => setActiveMainTab("chats")}
+        onOpenChat={() => setActiveMainTab('chats')}
       />
 
       <SettingsModals
@@ -332,10 +310,7 @@ export function EditorAiPanel({
         loadModels={loadModels}
         models={models}
         loadingModels={loadingModels}
-        agentType={agentType}
-        setAgentType={setAgentType}
-        profiles={profiles}
-        activeProfile={activeProfile}
+        profile={profile}
         codexAuthLoggedIn={codexAuthLoggedIn}
         codexAuthChecking={codexAuthChecking}
         codexAuthStarting={codexAuthStarting}

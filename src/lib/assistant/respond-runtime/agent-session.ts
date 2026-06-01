@@ -92,6 +92,8 @@ type SessionSourceFile = {
 };
 
 type TaskExpectations = {
+  mode: 'read-only' | 'mutate';
+  autonomous: boolean;
   backend: boolean;
   models: boolean;
   ui: boolean;
@@ -113,6 +115,7 @@ export type AgentWorkspaceSession = {
     mutationRoots: string[];
     uiRules: string[];
     backendRules: string[];
+    architectureMap: string[];
     validationRules: string[];
   };
   workspace: {
@@ -202,6 +205,18 @@ const inferTaskExpectations = (objective: string, activeFilePath: string): TaskE
   const path = String(activeFilePath || '').toLowerCase();
   const reasons: string[] = [];
   const hasAny = (...patterns: RegExp[]) => patterns.some((pattern) => pattern.test(prompt));
+  const readOnly =
+    hasAny(/\b(review|audit|analyze|analyse|explain|describe|blueprint|document|summari[sz]e|inspect)\b/i) &&
+    !hasAny(/\b(fix|implement|create|update|edit|change|patch|refactor|remove|delete|build|develop|add|write to file|save)\b/i);
+  const mutate = !readOnly;
+  const implementationRequest = mutate;
+  const autonomous =
+    implementationRequest &&
+    !hasAny(
+      /\b(module|backend|endpoint|route|api|model|entity|schema|database|orm|ui|frontend|component|page|screen|acl|permission|role|shared)\b/i,
+    );
+  if (readOnly) reasons.push('request is read-only by intent');
+  if (autonomous) reasons.push('request is implementation-oriented but does not explicitly name a surface');
 
   const backend =
     path.startsWith('modules/') ||
@@ -232,7 +247,7 @@ const inferTaskExpectations = (objective: string, activeFilePath: string): TaskE
   const preview = hasAny(/\b(preview|runtime error|exception|console error|browser error)\b/i);
   if (preview) reasons.push('request references preview/runtime feedback');
 
-  return { backend, models, ui, acl, shared, preview, reasons };
+  return { mode: readOnly ? 'read-only' : 'mutate', autonomous, backend, models, ui, acl, shared, preview, reasons };
 };
 
 const changeToPath = (change: AssistantChange): string | null => {
@@ -436,6 +451,14 @@ export const buildAgentWorkspaceSession = (input: {
         'Backend modules must export module.exports = async function handler(req, adapters) { ... }.',
         'Database access must use await adapters.orm("<database>:<key>").',
       ],
+      architectureMap: [
+        'modules/... = backend request handlers and server-side tenant logic',
+        'models/... = ORM entities and database-facing model code',
+        'ui/... = tenant frontend packages and screens',
+        'shared-modules/... = reusable backend/shared libraries',
+        'shared-ui/... = reusable frontend/shared UI libraries',
+        'modules/acl/... = tenant permission, role, and endpoint ACL definitions',
+      ],
       validationRules: [
         'Scope validation should follow the task expectations below, not blanket full-stack mutation rules.',
         'ACL updates are required when backend endpoints or access-control semantics change.',
@@ -524,6 +547,8 @@ export const renderAgentWorkspaceSession = (session: AgentWorkspaceSession) => {
   lines.push('');
   lines.push('TASK EXPECTATIONS:');
   lines.push(`- objective: ${session.task.objective || '(empty)'}`);
+  lines.push(`- mode: ${session.task.expectations.mode}`);
+  lines.push(`- autonomous surface selection: ${session.task.expectations.autonomous ? 'enabled' : 'disabled'}`);
   lines.push(
     `- expected surfaces: ${[
       session.task.expectations.backend ? 'backend' : '',

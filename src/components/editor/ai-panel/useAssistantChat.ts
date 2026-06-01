@@ -35,7 +35,6 @@ type Params = {
   activeFileContext: ActiveFileContext;
   aclConfig: unknown;
   settings: AiSettings;
-  agentType: string;
   systemPrompt: string;
   onWorkspaceRefresh: () => void;
   onLiveWorkspaceFileUpdate?: (file: LiveWorkspaceFileUpdate) => void;
@@ -64,7 +63,6 @@ export const useAssistantChat = ({
   activeFileContext,
   aclConfig,
   settings,
-  agentType,
   systemPrompt,
   onWorkspaceRefresh,
   onLiveWorkspaceFileUpdate,
@@ -125,11 +123,7 @@ export const useAssistantChat = ({
         systemPrompt: systemPrompt || undefined,
         config: settings.allowClientConfig
           ? {
-              baseUrl: settings.baseUrl,
-              apiKey: settings.apiKey,
               model: settings.model,
-              provider: settings.provider,
-              agentType,
             }
           : undefined,
       };

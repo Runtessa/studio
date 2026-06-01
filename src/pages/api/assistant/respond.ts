@@ -3,49 +3,17 @@ import { withApiHandler } from '@/lib/api-helpers';
 import { requireUser } from '@/lib/auth';
 import { resolveTenant } from '@/lib/tenancy';
 import { CODEX_SYSTEM_INSTRUCTIONS } from '@/lib/assistant/codex';
-import { buildAssistantTools } from '@/lib/assistant/tools';
-import { ASSISTANT_SYSTEM_INSTRUCTIONS } from '@/lib/assistant/agent';
 import type { AssistantChange } from '@/lib/assistant/types';
 import {
   buildAssistantIdempotencyKey,
-  getAssistantRun,
   getAssistantRunSummary,
   reserveAssistantRun,
   startAssistantRun,
 } from '@/lib/assistant/state-store';
-import { listPreviewExceptions } from '@/lib/assistant/preview-exceptions-store';
-import {
-  isCodexAgentMode,
-  normalizeMessages,
-  shouldWatchPreviewFromPrompt,
-  resolvePreviewExceptionsLimit,
-  buildAgentWorkspaceSession,
-  buildContextText,
-  createRunId,
-  buildRunName,
-  executeTool,
-  type WorkspaceContext,
-} from '@/lib/assistant/respond-runtime';
-import {
-  normalizeAssistantAgentType,
-  resolveAssistantAgentTypeFromEnv,
-} from '@/lib/assistant/agent-type';
-import {
-  handleAssistantRun,
-  handleCodexRun,
-  tryRespondFromCachedRun,
-} from '@/lib/assistant/respond-flow';
+import { normalizeMessages, buildRunName, createRunId } from '@/lib/assistant/respond-runtime';
+import { buildAssistantRequestRuntime, type RawAssistantContext } from '@/lib/assistant/request-runtime';
+import { handleCodexRun, tryRespondFromCachedRun } from '@/lib/assistant/respond-flow';
 
-type RawAssistantContext = {
-  watchPreviewExceptions?: unknown;
-  previewExceptionsLimit?: unknown;
-  activeFile?: {
-    id: string;
-    name: string;
-    meta?: unknown;
-    content: string;
-  } | null;
-};
 
 export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) => {
   if (req.method !== 'POST') {
@@ -67,13 +35,6 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
     systemPrompt: rawSystemPrompt,
   } = req.body ?? {};
 
-  const envAgentType = resolveAssistantAgentTypeFromEnv('orchestrator');
-  const requestedAgentType =
-    config && typeof config === 'object' ? (config as Record<string, unknown>).agentType : undefined;
-  const effectiveAgentType = allowClientConfig
-    ? normalizeAssistantAgentType(requestedAgentType, envAgentType)
-    : envAgentType;
-
   const chatId =
     typeof rawChatId === 'string' && rawChatId.trim()
       ? rawChatId.trim().slice(0, 128)
@@ -87,98 +48,21 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
   }
 
   const changes: AssistantChange[] = [];
-  const tools = buildAssistantTools({
-    tenant,
-    userId: user.id,
-    role: user.normalizedRole,
-    permissions: user.permissions,
-    isAdmin: user.isAdmin,
-    activeTeamId: user.activeTeamId,
-    changes,
-  });
-
-  const workspace = await executeTool<WorkspaceContext, Record<string, never>>(tools.list_workspace, {});
-  const acl = await executeTool<{
-    permissions: unknown;
-    roles: unknown;
-    endpoints: unknown;
-  }, Record<string, never>>(tools.get_acl_config, {});
-
   const context =
     rawContext && typeof rawContext === 'object'
       ? (rawContext as RawAssistantContext)
       : null;
 
-  const watchPreviewExceptions =
-    context?.watchPreviewExceptions === true || shouldWatchPreviewFromPrompt(normalizedMessages);
-  const previewExceptionsLimit = resolvePreviewExceptionsLimit(context?.previewExceptionsLimit);
-  const previewExceptions = watchPreviewExceptions
-    ? await listPreviewExceptions(tenant.id, String(user.id), previewExceptionsLimit)
-    : [];
-
-  const runId = createRunId(chatId);
-  const previousRun = await getAssistantRun(tenant.id, runId);
-  const session = buildAgentWorkspaceSession({
+  const { tools, workspace, session, contextText } = await buildAssistantRequestRuntime({
+    tenant,
+    user,
     chatId,
     messages: normalizedMessages,
-    workspace: {
-      tenant: workspace.tenant ?? undefined,
-      modules: workspace.modules ?? [],
-      models: workspace.models ?? [],
-      uiPackages: workspace.uiPackages ?? [],
-      sharedUi: workspace.sharedUi ?? [],
-      sharedModules: workspace.sharedModules ?? [],
-      sharedUiFiles: workspace.sharedUiFiles ?? [],
-      sharedModuleFiles: workspace.sharedModuleFiles ?? [],
-    },
-    acl: {
-      permissions: acl.permissions,
-      roles: acl.roles,
-      endpoints: acl.endpoints,
-    },
-    preview: {
-      enabled: watchPreviewExceptions,
-      exceptions: previewExceptions,
-    },
-    actor: {
-      role: user.normalizedRole,
-      permissions: user.permissions || [],
-    },
-    activeFile: context?.activeFile ?? null,
-    previousRun,
+    context,
+    changes,
   });
 
-  const contextText = buildContextText(
-    {
-      tenant: workspace.tenant ?? undefined,
-      modules: workspace.modules ?? [],
-      models: workspace.models ?? [],
-      uiPackages: workspace.uiPackages ?? [],
-      sharedUi: workspace.sharedUi ?? [],
-      sharedModules: workspace.sharedModules ?? [],
-      sharedUiFiles: workspace.sharedUiFiles ?? [],
-      sharedModuleFiles: workspace.sharedModuleFiles ?? [],
-    },
-    {
-      permissions: acl.permissions,
-      roles: acl.roles,
-      endpoints: acl.endpoints,
-    },
-    {
-      enabled: watchPreviewExceptions,
-      exceptions: previewExceptions,
-    },
-    {
-      role: user.normalizedRole,
-      permissions: user.permissions || [],
-    },
-    {
-      chatId,
-      messages: normalizedMessages,
-      activeFile: context?.activeFile ?? null,
-      previousRun,
-    },
-  );
+  const runId = createRunId(chatId);
 
   const idempotency = buildAssistantIdempotencyKey(normalizedMessages, contextText);
   const existingRunSummary = await getAssistantRunSummary(tenant.id, runId);
@@ -199,48 +83,26 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
 
   await startAssistantRun(tenant.id, runId, { idempotency, runName });
 
-  if (isCodexAgentMode(effectiveAgentType)) {
-    await handleCodexRun({
-      req,
-      res,
-      tenantId: tenant.id,
-      userId: user.id,
-      userName: user.email,
-      chatId,
-      runId,
-      runName,
-      idempotency,
-      stream: Boolean(stream),
-      rawSystemPrompt,
-      config,
-      allowClientConfig,
-      agentType: effectiveAgentType,
-      messages: normalizedMessages,
-      contextText,
-      session,
-      tools: tools as Record<string, unknown>,
-      workspace,
-      changes,
-      codexSystemPrompt: CODEX_SYSTEM_INSTRUCTIONS,
-    });
-    return;
-  }
-
-  await handleAssistantRun({
+  await handleCodexRun({
     req,
     res,
     tenantId: tenant.id,
+    userId: user.id,
+    userName: user.email,
+    chatId,
     runId,
     runName,
     idempotency,
     stream: Boolean(stream),
     rawSystemPrompt,
-    assistantSystemPrompt: ASSISTANT_SYSTEM_INSTRUCTIONS,
     config,
     allowClientConfig,
-    tools: tools as Record<string, unknown>,
     messages: normalizedMessages,
     contextText,
+    session,
+    tools: tools as Record<string, unknown>,
+    workspace,
     changes,
+    codexSystemPrompt: CODEX_SYSTEM_INSTRUCTIONS,
   });
 });

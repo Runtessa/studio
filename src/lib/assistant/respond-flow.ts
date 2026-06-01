@@ -1,6 +1,4 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { buildAssistantModelConfig, createAssistantAgent } from '@/lib/assistant/agent';
-import { executeAssistantRun, type AssistantRunEvent } from '@/lib/assistant/orchestrator';
 import {
   appendAssistantEvent,
   completeAssistantRun,
@@ -12,9 +10,9 @@ import type { AgentWorkspaceSession, WorkspaceContext } from '@/lib/assistant/re
 import {
   executeCodexPipeline,
   normalizeSystemPrompt,
-  pickAvailableModel,
   resolveCodexModel,
 } from '@/lib/assistant/respond-runtime';
+import { commitCodexGatewayWorkspace, resetCodexGatewayWorkspace } from '@/lib/assistant/gateway-workspace';
 import type { WorkspaceFileEvent } from '@/lib/assistant/respond-runtime/codex-client';
 
 const openSse = (res: NextApiResponse) => {
@@ -125,7 +123,6 @@ type CodexRunParams = {
   rawSystemPrompt: unknown;
   config: unknown;
   allowClientConfig: boolean;
-  agentType: string;
   messages: Array<{ role: string; content: string }>;
   contextText: string;
   session: AgentWorkspaceSession;
@@ -149,7 +146,6 @@ export const handleCodexRun = async ({
   rawSystemPrompt,
   config,
   allowClientConfig,
-  agentType,
   messages,
   contextText,
   session,
@@ -159,11 +155,30 @@ export const handleCodexRun = async ({
   codexSystemPrompt,
 }: CodexRunParams): Promise<void> => {
   const systemPrompt = normalizeSystemPrompt(rawSystemPrompt, codexSystemPrompt);
-  const codexModel = resolveCodexModel(
-    (config ?? {}) as { model?: string },
-    allowClientConfig,
-    agentType,
-  );
+  const codexModel = resolveCodexModel((config ?? {}) as { model?: string }, allowClientConfig);
+
+  const syncGatewayWorkspace = async (action: 'commit' | 'reset') => {
+    if (!session?.tenant?.id) return;
+    try {
+      if (action === 'commit') {
+        await commitCodexGatewayWorkspace({
+          userId,
+          userName,
+          chatId,
+          tenantId: session.tenant.id,
+        });
+        return;
+      }
+      await resetCodexGatewayWorkspace({
+        userId,
+        userName,
+        chatId,
+        tenantId: session.tenant.id,
+      });
+    } catch {
+      // keep run result authoritative; gateway workspace can be repaired on next activation
+    }
+  };
 
   const completePipeline = async (pipeline: Awaited<ReturnType<typeof executeCodexPipeline>>) => {
     const now = new Date().toISOString();
@@ -198,7 +213,6 @@ export const handleCodexRun = async ({
       contextText,
       session,
       systemPrompt,
-      agentType,
       model: codexModel,
       tools: tools as Record<string, any>,
       workspace,
@@ -213,6 +227,7 @@ export const handleCodexRun = async ({
       },
     });
     await completePipeline(pipeline);
+    await syncGatewayWorkspace(pipeline.status === 'completed' ? 'commit' : 'reset');
 
     if (pipeline.status === 'failed') {
       sendSse(res, {
@@ -247,7 +262,6 @@ export const handleCodexRun = async ({
     contextText,
     session,
     systemPrompt,
-    agentType,
     model: codexModel,
     tools: tools as Record<string, any>,
     workspace,
@@ -257,6 +271,7 @@ export const handleCodexRun = async ({
     },
   });
   await completePipeline(pipeline);
+  await syncGatewayWorkspace(pipeline.status === 'completed' ? 'commit' : 'reset');
   if (pipeline.status === 'failed') {
     throw new Error(pipeline.conflicts[0]?.message || pipeline.message || 'Codex execution failed');
   }
@@ -269,176 +284,5 @@ export const handleCodexRun = async ({
     events: pipeline.events,
     dag: pipeline.dag,
     conflicts: pipeline.conflicts,
-  });
-};
-
-type AssistantRunParams = {
-  req: NextApiRequest;
-  res: NextApiResponse;
-  tenantId: string;
-  runId: string;
-  runName: string;
-  idempotency: string;
-  stream: boolean;
-  rawSystemPrompt: unknown;
-  assistantSystemPrompt: string;
-  config: unknown;
-  allowClientConfig: boolean;
-  tools: Record<string, unknown>;
-  messages: Array<{ role: string; content: string }>;
-  contextText: string;
-  changes: AssistantChange[];
-};
-
-export const handleAssistantRun = async ({
-  req,
-  res,
-  tenantId,
-  runId,
-  runName,
-  idempotency,
-  stream,
-  rawSystemPrompt,
-  assistantSystemPrompt,
-  config,
-  allowClientConfig,
-  tools,
-  messages,
-  contextText,
-  changes,
-}: AssistantRunParams): Promise<void> => {
-  const modelConfig = await pickAvailableModel(buildAssistantModelConfig((config ?? {}) as Record<string, unknown>, allowClientConfig));
-  const systemPrompt = normalizeSystemPrompt(rawSystemPrompt, assistantSystemPrompt);
-  const agent = createAssistantAgent(tools as any, modelConfig);
-
-  const finalize = async (run: Awaited<ReturnType<typeof executeAssistantRun>>) => {
-    const status = run.events.some((event) => event.type === 'RUN_FAILED') ? 'failed' : 'completed';
-    await completeAssistantRun({
-      runId,
-      tenantId,
-      runName,
-      status,
-      message: run.message || '',
-      finishReason: run.finishReason,
-      usage: run.usage,
-      createdAt: run.events[0]?.timestamp ?? new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      idempotencyKey: idempotency,
-      events: run.events,
-      changes,
-      artifacts: [
-        ...run.artifacts,
-        { id: `${runId}-changes`, kind: 'workspace_changes', payload: changes },
-      ],
-      dag: run.dag,
-      conflicts: run.conflicts,
-    });
-    return { ...run, status };
-  };
-
-  if (stream) {
-    openSse(res);
-    const send = (payload: Record<string, unknown>) => sendSse(res, payload);
-
-    try {
-      let closed = false;
-      req.on('close', () => {
-        closed = true;
-      });
-      let startSent = false;
-      const emitRunEvent = (event: AssistantRunEvent) => {
-        if (closed) return;
-        if (!startSent) {
-          send({ type: 'start', runId: event.runId });
-          startSent = true;
-        }
-        send({ type: 'run_event', event });
-      };
-
-      const run = await executeAssistantRun({
-        runId,
-        agent,
-        messages,
-        systemPrompt,
-        contextText,
-        maxSteps: 24,
-        maxRetries: 1,
-        onDelta: (content) => {
-          if (!closed && content) send({ type: 'delta', content });
-        },
-        onEvent: (event) => {
-          emitRunEvent(event);
-          void appendAssistantEvent(tenantId, runId, event).catch(() => undefined);
-        },
-        collectChanges: () => changes,
-      });
-
-      const finalized = await finalize(run);
-      send({
-        type: 'done',
-        message: finalized.message || '',
-        changes,
-        finishReason: finalized.finishReason,
-        runId,
-        usage: finalized.usage,
-        events: finalized.events,
-        dag: finalized.dag,
-        conflicts: finalized.conflicts,
-      });
-      res.end();
-      return;
-    } catch (err) {
-      const now = new Date().toISOString();
-      await completeAssistantRun({
-        runId,
-        tenantId,
-        runName,
-        status: 'failed',
-        message: '',
-        finishReason: 'error',
-        usage: undefined,
-        createdAt: now,
-        updatedAt: now,
-        idempotencyKey: idempotency,
-        events: [],
-        changes: [],
-        artifacts: [
-          { id: `${runId}-messages`, kind: 'request_messages', payload: messages },
-          { id: `${runId}-context`, kind: 'workspace_context', payload: contextText },
-          { id: `${runId}-changes`, kind: 'workspace_changes', payload: [] },
-        ],
-        dag: { nodes: [], edges: [] },
-        conflicts: [],
-      });
-      send({ type: 'error', message: (err as Error).message || 'Streaming failed' });
-      res.end();
-      return;
-    }
-  }
-
-  const run = await executeAssistantRun({
-    runId,
-    agent,
-    messages,
-    systemPrompt,
-    contextText,
-    maxSteps: 24,
-    maxRetries: 1,
-    onEvent: (event) => {
-      void appendAssistantEvent(tenantId, runId, event).catch(() => undefined);
-    },
-    collectChanges: () => changes,
-  });
-  const finalized = await finalize(run);
-
-  res.status(200).json({
-    message: finalized.message || '',
-    changes,
-    finishReason: finalized.finishReason,
-    runId,
-    usage: finalized.usage,
-    events: finalized.events,
-    dag: finalized.dag,
-    conflicts: finalized.conflicts,
   });
 };

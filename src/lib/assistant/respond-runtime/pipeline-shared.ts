@@ -176,6 +176,51 @@ const buildCoverageState = (
   return state;
 };
 
+const applyDirectWorkspaceEditCoverage = (
+  state: {
+    backend: boolean;
+    models: boolean;
+    ui: boolean;
+    acl: boolean;
+    shared: boolean;
+  },
+  directWorkspaceEdits: Array<{ path: string }>,
+) => {
+  for (const edit of directWorkspaceEdits) {
+    const filePath = String(edit.path || '').replace(/\\/g, '/');
+    if (!filePath) continue;
+    if (
+      filePath.startsWith('src/core/') ||
+      filePath.startsWith('src/auth/') ||
+      filePath.startsWith('src/container-agent/') ||
+      filePath.startsWith('src/codex-gateway/')
+    ) {
+      state.backend = true;
+    }
+    if (
+      filePath.includes('/entities/') ||
+      filePath.includes('/migrations/') ||
+      filePath.startsWith('src/packages/shared/src/entities/')
+    ) {
+      state.models = true;
+    }
+    if (
+      filePath.startsWith('src/ideNew/') ||
+      filePath.startsWith('src/auth/pages/') ||
+      filePath.startsWith('src/auth/components/')
+    ) {
+      state.ui = true;
+    }
+    if (filePath.includes('/acl/') || /permissions|roles|endpoints/.test(filePath)) {
+      state.acl = true;
+    }
+    if (filePath.startsWith('src/packages/shared/') || filePath.includes('/shared/')) {
+      state.shared = true;
+    }
+  }
+  return state;
+};
+
 const shouldRequireSurface = (session: AgentWorkspaceSession, surface: keyof AgentWorkspaceSession['task']['expectations']) =>
   Boolean(session.task.expectations[surface]);
 
@@ -183,6 +228,7 @@ export const buildCoverageConflicts = (
   session: AgentWorkspaceSession,
   operations: CodexOperation[],
   changes: AssistantChange[],
+  directWorkspaceEdits: Array<{ path: string }> = [],
   opErrors: string[],
   relatedNodeIds: string[],
 ) => {
@@ -194,12 +240,15 @@ export const buildCoverageConflicts = (
   }
   const looksLikeMutation = promptLooksLikeMutation(session.task.objective || '');
   if (!looksLikeMutation) return conflicts;
-  if (!changes.length) {
+  if (!changes.length && !directWorkspaceEdits.length) {
     conflicts.push(
       createConflict('Mutation request produced no applied workspace changes.', 'high', relatedNodeIds),
     );
   }
-  const coverage = buildCoverageState(operations, changes);
+  const coverage = applyDirectWorkspaceEditCoverage(
+    buildCoverageState(operations, changes),
+    directWorkspaceEdits,
+  );
   if (shouldRequireSurface(session, 'backend') && !coverage.backend) {
     conflicts.push(
       createConflict(

@@ -5,11 +5,9 @@ import type {
   CodexGatewayRuntime,
   CodexLoginSession,
 } from './shared';
-import { normalizeAssistantAgentType } from '@/lib/assistant/agent-type';
 
 type Params = {
   apiFetch: ApiFetch;
-  agentType: string;
   settingsOpen: boolean;
   success: (message: string) => void;
   showError: (message: string) => void;
@@ -74,15 +72,7 @@ const toRuntime = (payload: RuntimePayload): CodexGatewayRuntime | null => {
   };
 };
 
-export const useCodexRuntime = ({
-  apiFetch,
-  agentType,
-  settingsOpen,
-  success,
-  showError,
-}: Params) => {
-  const isCodexAgent = normalizeAssistantAgentType(agentType, 'orchestrator') === 'codex';
-
+export const useCodexRuntime = ({ apiFetch, settingsOpen, success, showError }: Params) => {
   const [codexAuthChecking, setCodexAuthChecking] = useState(false);
   const [codexAuthStarting, setCodexAuthStarting] = useState(false);
   const [codexAuthLoggedIn, setCodexAuthLoggedIn] = useState(false);
@@ -102,7 +92,6 @@ export const useCodexRuntime = ({
   };
 
   const loadCodexAuthStatus = async (silent = false) => {
-    if (!isCodexAgent) return;
     if (!silent) setCodexAuthChecking(true);
     try {
       const result = await apiFetch('/api/assistant/auth/status');
@@ -187,7 +176,6 @@ export const useCodexRuntime = ({
   };
 
   const startCodexLogin = async () => {
-    if (!isCodexAgent) return;
     setCodexAuthStarting(true);
     try {
       const result = await apiFetch('/api/assistant/auth/start', {
@@ -238,8 +226,9 @@ export const useCodexRuntime = ({
         body: {},
       });
       setCodexSession(null);
+      setCodexAuthLoggedIn(false);
+      setCodexAuthStatus('Logged out');
       clearCodexPollTimer();
-      await loadCodexAuthStatus(true);
       success('Logged out from Codex');
     } catch (err) {
       showError((err as Error).message || 'Failed to logout Codex');
@@ -247,34 +236,24 @@ export const useCodexRuntime = ({
   };
 
   useEffect(() => {
-    if (!settingsOpen || !isCodexAgent) return;
-    void loadCodexAuthStatus();
+    if (!settingsOpen) return;
+    void loadCodexAuthStatus(true);
     void loadCodexRuntime(true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settingsOpen, isCodexAgent]);
+  }, [settingsOpen]);
 
   useEffect(() => {
-    if (!settingsOpen || !isCodexAgent) return;
+    clearCodexPollTimer();
     if (!codexSession?.sessionId) return;
     if (codexSession.status !== 'starting' && codexSession.status !== 'running') {
-      clearCodexPollTimer();
       return;
     }
-    clearCodexPollTimer();
     codexPollTimerRef.current = window.setInterval(() => {
       void loadCodexLoginSession(codexSession.sessionId, true);
-    }, 2000);
+    }, 3000);
     return () => {
       clearCodexPollTimer();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settingsOpen, isCodexAgent, codexSession?.sessionId, codexSession?.status]);
-
-  useEffect(() => {
-    return () => {
-      clearCodexPollTimer();
-    };
-  }, []);
+  }, [codexSession?.sessionId, codexSession?.status]);
 
   return {
     codexAuthChecking,

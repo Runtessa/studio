@@ -8,9 +8,9 @@ import {
   resolveCodexGatewayModeValue,
 } from '@/lib/assistant/gateway-runtime';
 import {
-  isCodexFamilyAgentType,
-  normalizeAssistantAgentType,
-} from '@/lib/assistant/agent-type';
+  CODEX_JSON_SYSTEM_INSTRUCTIONS,
+  CODEX_WORKSPACE_SYSTEM_INSTRUCTIONS,
+} from '@/lib/assistant/codex';
 import type { AgentWorkspaceSession } from './workspace-context';
 
 export type WorkspaceFileEvent = {
@@ -19,10 +19,11 @@ export type WorkspaceFileEvent = {
   content?: string;
 };
 
-const resolveAgentType = () => normalizeAssistantAgentType(process.env.AGENT_TYPE, 'orchestrator');
-
-export const isCodexAgentMode = (agentType?: string) =>
-  isCodexFamilyAgentType(agentType || resolveAgentType());
+export type DirectWorkspaceEdit = {
+  path: string;
+  action: 'create' | 'edit' | 'delete';
+  content?: string;
+};
 
 export const resolveCodexCwd = () => {
   const fromEnv = (process.env.AGENT_CODEX_CWD || '').trim();
@@ -62,16 +63,38 @@ const buildExpectedSurfaceContract = (session?: AgentWorkspaceSession) => {
 const buildGatewayWorkspaceSystemPrompt = (
   systemPrompt: string,
   session?: AgentWorkspaceSession,
-) => `${systemPrompt}
+) => {
+  const override = String(systemPrompt || '').trim();
+  const customOverride =
+    override &&
+    override !== CODEX_WORKSPACE_SYSTEM_INSTRUCTIONS &&
+    override !== CODEX_JSON_SYSTEM_INSTRUCTIONS
+      ? `\n\nCUSTOM USER OVERRIDE:\n${override}`
+      : '';
+  return `${CODEX_WORKSPACE_SYSTEM_INSTRUCTIONS}${customOverride}
 
 GATEWAY WORKSPACE MODE:
+- Ignore any conflicting older instruction that says to return JSON operations.
 - You are running inside a hydrated tenant workspace on disk.
 - Read and edit files directly in the workspace instead of returning JSON tool operations.
 - The workspace includes .idp/manifest.json, .idp/task-state.json, and .idp/AGENTS.md.
+- If the task is implementation-oriented and the user does not name a specific surface, choose the correct root yourself from backend/modules, models, ui, shared assets, and acl.
 - Follow the task scope described there and keep edits minimal.
 - ${buildExpectedSurfaceContract(session).slice(2)}
 - When you finish, reply with a concise human summary of what you changed.
 - Do not return JSON unless the user explicitly asks for JSON.`;
+};
+
+const buildCliJsonSystemPrompt = (systemPrompt: string) => {
+  const override = String(systemPrompt || '').trim();
+  const customOverride =
+    override &&
+    override !== CODEX_WORKSPACE_SYSTEM_INSTRUCTIONS &&
+    override !== CODEX_JSON_SYSTEM_INSTRUCTIONS
+      ? `\n\nCUSTOM USER OVERRIDE:\n${override}`
+      : '';
+  return `${CODEX_JSON_SYSTEM_INSTRUCTIONS}${customOverride}`;
+};
 
 const buildCodexPrompt = (
   messages: Array<{ role: string; content: string }>,
@@ -169,115 +192,9 @@ export type CodexExecInput = {
   contextText: string;
   session?: AgentWorkspaceSession;
   systemPrompt: string;
-  agentType?: string;
   model?: string;
   onLine?: (line: string) => void;
   onWorkspaceFile?: (event: WorkspaceFileEvent) => void;
-};
-
-const normalizeBaseUrl = (value?: string | null) => String(value || '').trim().replace(/\/+$/, '');
-
-const resolveHermesBaseUrl = () =>
-  normalizeBaseUrl(process.env.HERMES_BASE_URL || process.env.AI_BASE_URL || '');
-
-const resolveHermesApiToken = () =>
-  String(process.env.HERMES_API_TOKEN || process.env.HERMES_API_KEY || process.env.AI_API_KEY || '').trim();
-
-const resolveHermesModel = (requested?: string) => {
-  const explicit = String(requested || '').trim();
-  if (explicit) return explicit;
-  return String(process.env.HERMES_MODEL || process.env.AGENT_HERMES_MODEL || process.env.AI_MODEL || '').trim();
-};
-
-const parseHermesResponseText = (payload: any): string => {
-  if (!payload || typeof payload !== 'object') return '';
-
-  const choices = Array.isArray(payload.choices) ? payload.choices : [];
-  const firstChoice = choices[0];
-  const chatText =
-    typeof firstChoice?.message?.content === 'string'
-      ? firstChoice.message.content
-      : typeof firstChoice?.text === 'string'
-        ? firstChoice.text
-        : '';
-  if (chatText.trim()) return chatText.trim();
-
-  if (typeof payload.output_text === 'string' && payload.output_text.trim()) {
-    return payload.output_text.trim();
-  }
-
-  const output = Array.isArray(payload.output) ? payload.output : [];
-  for (const item of output) {
-    const content = Array.isArray(item?.content) ? item.content : [];
-    for (const block of content) {
-      if (typeof block?.text === 'string' && block.text.trim()) {
-        return block.text.trim();
-      }
-    }
-  }
-
-  return '';
-};
-
-const executeHermesProxy = async (input: CodexExecInput) => {
-  const baseUrl = resolveHermesBaseUrl();
-  if (!baseUrl) {
-    throw new Error('HERMES_BASE_URL is not configured');
-  }
-  const token = resolveHermesApiToken();
-  if (!token) {
-    throw new Error('HERMES_API_TOKEN is not configured');
-  }
-
-  const model = resolveHermesModel(input.model);
-  if (!model) {
-    throw new Error('HERMES_MODEL is not configured');
-  }
-
-  const prompt = buildCodexPrompt(
-    input.messages,
-    input.contextText,
-    input.systemPrompt,
-    input.session,
-  );
-  input.onLine?.(`[hermes] proxy request started (${model})`);
-
-  const controller = new AbortController();
-  const timeoutMs = resolveCodexTimeoutMs();
-  const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
-
-  const headers = {
-    'content-type': 'application/json',
-    authorization: `Bearer ${token}`,
-  };
-
-  try {
-    const chatResponse = await fetch(`${baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        model,
-        messages: [{ role: 'user', content: prompt }],
-        temperature: 0.1,
-      }),
-      signal: controller.signal,
-    });
-
-    if (!chatResponse.ok) {
-      const detail = (await chatResponse.text().catch(() => '')).trim();
-      throw new Error(detail || `Hermes API request failed (${chatResponse.status})`);
-    }
-
-    const payload = await chatResponse.json().catch(() => ({}));
-    const message = parseHermesResponseText(payload);
-    if (!message) {
-      throw new Error('Hermes API returned no usable text response');
-    }
-    input.onLine?.('[hermes] proxy request completed');
-    return { message };
-  } finally {
-    clearTimeout(timeoutHandle);
-  }
 };
 
 const executeCodexCli = async (input: CodexExecInput) => {
@@ -285,7 +202,7 @@ const executeCodexCli = async (input: CodexExecInput) => {
   const prompt = buildCodexPrompt(
     input.messages,
     input.contextText,
-    input.systemPrompt,
+    buildCliJsonSystemPrompt(input.systemPrompt),
     input.session,
   );
   const runOnce = async (model?: string) =>
@@ -433,6 +350,7 @@ const executeCodexGateway = async (input: CodexExecInput) => {
   let doneError = '';
   let doneOk = false;
   let doneSignal = '';
+  let workspaceScope: 'tenant' | 'repo' = 'tenant';
   let changedFiles: Array<{ path: string; action: 'create' | 'edit' | 'delete'; content?: string }> =
     [];
 
@@ -493,6 +411,7 @@ const executeCodexGateway = async (input: CodexExecInput) => {
       doneMessage = String(payload?.message || '').trim();
       doneError = String(payload?.error || '').trim();
       doneSignal = String(payload?.signal || '').trim();
+      workspaceScope = payload?.workspaceScope === 'repo' ? 'repo' : 'tenant';
       changedFiles = Array.isArray(payload?.changedFiles)
         ? payload.changedFiles
             .map((item: any) => ({
@@ -541,16 +460,12 @@ const executeCodexGateway = async (input: CodexExecInput) => {
 
   return {
     message: doneMessage || 'Codex completed with no response text.',
+    workspaceScope,
     workspaceDiff: changedFiles,
   };
 };
 
 export const executeCodex = async (input: CodexExecInput) => {
-  const agentType = normalizeAssistantAgentType(input.agentType || resolveAgentType(), 'orchestrator');
-  if (agentType === 'hermes') {
-    return executeHermesProxy(input);
-  }
-
   const mode = resolveCodexGatewayModeValue();
   const gatewayEnabled = mode !== 'off' && mode !== 'none' && mode !== 'disabled';
   const shouldUseGateway =
@@ -568,5 +483,3 @@ export const getLatestUserPrompt = (messages: Array<{ role: string; content: str
   }
   return '';
 };
-
-export { resolveAgentType };

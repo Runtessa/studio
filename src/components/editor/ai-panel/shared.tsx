@@ -36,16 +36,13 @@ export type LiveWorkspaceFileUpdate = {
 };
 
 export type AiSettings = {
-  baseUrl: string;
-  apiKey: string;
   model: string;
-  provider: string;
   allowClientConfig: boolean;
   watchPreviewExceptions: boolean;
 };
 
 export type AssistantAgentProfile = {
-  key: "orchestrator" | "codex" | "hermes";
+  key: "codex";
   label: string;
   description: string;
   provider: string;
@@ -53,7 +50,6 @@ export type AssistantAgentProfile = {
   systemPrompt: string;
   contextPolicy: string[];
   supportsGatewayRuntime: boolean;
-  supportsDirectProviderConfig: boolean;
 };
 
 export type CodexLoginSession = {
