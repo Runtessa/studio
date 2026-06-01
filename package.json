@@ -5,7 +5,7 @@
   "main": "src/index.js",
   "scripts": {
     "dev": "cross-env NEXT_CSS_TRANSFORMER=postcss NEXT_DISABLE_LIGHTNINGCSS=1 NEXT_IGNORE_LIGHTNINGCSS_BIN=1 next dev --webpack -p 3002",
-    "build": "cross-env NEXT_CSS_TRANSFORMER=postcss NEXT_DISABLE_LIGHTNINGCSS=1 NEXT_IGNORE_LIGHTNINGCSS_BIN=1 next build --webpack",
+    "build": "npm --prefix ../packages/shared run build && cross-env NEXT_CSS_TRANSFORMER=postcss NEXT_DISABLE_LIGHTNINGCSS=1 NEXT_IGNORE_LIGHTNINGCSS_BIN=1 next build --webpack",
     "start": "next start",
     "type-check": "tsc --noEmit",
     "dump": "node ./scripts/dump.js"
