@@ -36,7 +36,7 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
     userId: user.id,
     userName: user.email,
     chatId,
-    tenantId: (session as AgentWorkspaceSession).tenant.id,
+    tenantId: tenant.id,
     session,
   });
 

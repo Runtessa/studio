@@ -1,6 +1,7 @@
 import { buildAssistantTools } from '@/lib/assistant/tools';
 import { listPreviewExceptions } from '@/lib/assistant/preview-exceptions-store';
 import { getAssistantRun } from '@/lib/assistant/state-store';
+import type { IdePermission } from '@/lib/rbac';
 import {
   buildAgentWorkspaceSession,
   buildContextText,
@@ -11,6 +12,7 @@ import {
   type WorkspaceContext,
 } from '@/lib/assistant/respond-runtime';
 import type { AssistantChange } from '@/lib/assistant/types';
+import type { Tenant } from '@idp/shared';
 
 export type RawAssistantContext = {
   watchPreviewExceptions?: unknown;
@@ -24,19 +26,15 @@ export type RawAssistantContext = {
 };
 
 type RuntimeUser = {
-  id: string | number;
+  id: number;
   normalizedRole: string;
-  permissions?: string[];
-  isAdmin?: boolean;
-  activeTeamId?: string | null;
-};
-
-type RuntimeTenant = {
-  id: string;
+  permissions: IdePermission[];
+  isAdmin: boolean;
+  activeTeamId?: number | null;
 };
 
 type BuildAssistantRequestRuntimeInput = {
-  tenant: RuntimeTenant;
+  tenant: Tenant;
   user: RuntimeUser;
   chatId: string;
   messages: Array<{ role: string; content: string }>;
