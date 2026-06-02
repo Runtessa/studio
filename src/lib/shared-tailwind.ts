@@ -69,16 +69,12 @@ export const upsertGlobalTailwindPackage = async (
   const repo = CoreDataSource.getRepository(GlobalUIPackage);
   const sourceRepo = CoreDataSource.getRepository(SourceCode);
   const compiledRepo = CoreDataSource.getRepository(CompiledCode);
-  let pkg = await repo.findOne({
-    where: { name, version },
-    relations: ['sourceCode', 'compiledCode'],
-  });
   const sourceCode = sourceRepo.create({ code: css });
   const compiledCode = compiledRepo.create({ code: css });
   await sourceRepo.save(sourceCode);
   await compiledRepo.save(compiledCode);
-  if (!pkg) {
-    pkg = repo.create({
+  await repo.upsert(
+    {
       name,
       version,
       entryPath: 'styles.css',
@@ -87,15 +83,16 @@ export const upsertGlobalTailwindPackage = async (
       dependencies: [],
       fileExtension: 'css',
       draftVersion: generateVersion(),
-    });
-  } else {
-    pkg.sourceCode = sourceCode;
-    pkg.compiledCode = compiledCode;
-    pkg.dependencies = [];
-    pkg.fileExtension = 'css';
-    pkg.draftVersion = generateVersion();
+    },
+    ['name', 'version']
+  );
+  const pkg = await repo.findOne({
+    where: { name, version },
+    relations: ['sourceCode', 'compiledCode'],
+  });
+  if (!pkg) {
+    throw new Error(`Failed to reload global Tailwind package ${name}@${version}`);
   }
-  await repo.save(pkg);
   await clearRegistryCache(name, version);
   return pkg;
 };

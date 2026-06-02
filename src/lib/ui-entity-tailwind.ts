@@ -32,33 +32,30 @@ export const upsertTailwindPackage = async (
   const repo = CoreDataSource.getRepository(UIPackage);
   const sourceRepo = CoreDataSource.getRepository(SourceCode);
   const compiledRepo = CoreDataSource.getRepository(CompiledCode);
-  let pkg = await repo.findOne({
-    where: { tenant: { id: tenantId }, name, version },
-    relations: ['sourceCode', 'compiledCode'],
-  });
   const sourceCode = sourceRepo.create({ code: css });
   const compiledCode = compiledRepo.create({ code: css });
   await sourceRepo.save(sourceCode);
   await compiledRepo.save(compiledCode);
+  const upsertPayload: any = {
+    tenant: { id: tenantId },
+    name,
+    version,
+    sourceCode,
+    compiledCode,
+    dependencies: [],
+    fileExtension: 'css',
+    draftVersion: generateVersion(),
+  };
+  await repo.upsert(upsertPayload, ['tenant', 'name', 'version']);
+
+  const pkg = await repo.findOne({
+    where: { tenant: { id: tenantId }, name, version },
+    relations: ['sourceCode', 'compiledCode'],
+  });
   if (!pkg) {
-    pkg = repo.create({
-      tenant: { id: tenantId } as UIPackage['tenant'],
-      name,
-      version,
-      sourceCode,
-      compiledCode,
-      dependencies: [],
-      fileExtension: 'css',
-      draftVersion: generateVersion(),
-    });
-  } else {
-    pkg.sourceCode = sourceCode;
-    pkg.compiledCode = compiledCode;
-    pkg.dependencies = [];
-    pkg.fileExtension = 'css';
-    pkg.draftVersion = generateVersion();
+    throw new Error(`Failed to reload Tailwind package ${name}@${version} for tenant ${tenantId}`);
   }
-  await repo.save(pkg);
+
   await clearRegistryCache(tenantId, name, version);
   return pkg;
 };
