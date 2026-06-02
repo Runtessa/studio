@@ -9,6 +9,12 @@ const nextConfig = {
   experimental: {
     optimizeCss: false,
     serverSourceMaps: true
+  },
+  webpack: (config, { isServer, dev }) => {
+    if (isServer && !dev && config.optimization) {
+      config.optimization.minimize = false;
+    }
+    return config;
   }
 };
 
