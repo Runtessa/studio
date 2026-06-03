@@ -11,7 +11,7 @@ class MyDocument extends Document {
             href="https://fonts.gstatic.com"
             crossOrigin="anonymous"
           />
-          <link rel="icon" href="/images/lm.png" />
+          <link rel="icon" href="/brand/ashna-cloudway-icon-white-transparent.png" />
         </Head>
         <body className="bg-bgApp text-textPrimary">
           <Main />

@@ -288,8 +288,8 @@ export function EditorWorkspace({
         <div className="absolute inset-0 flex items-center justify-center text-gray-400">
           <div className="flex flex-col items-center gap-8">
             <img
-              src="/images/lm.png"
-              alt="Empty editor"
+              src="/brand/ashna-cloudway-icon-white-transparent.png"
+              alt="Ashna CloudWay"
               className="h-32 w-auto object-contain opacity-30 grayscale brightness-50"
             />
             <div className="text-xs text-gray-500">

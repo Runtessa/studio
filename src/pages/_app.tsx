@@ -16,7 +16,10 @@ export default function App({ Component, pageProps }: AppProps) {
   return (
     <ToastProvider>
       <Head>
-        <title>ADA Idp Control Panel</title>
+        <title>Ashna CloudWay</title>
+        <meta name="application-name" content="Ashna CloudWay" />
+        <meta name="description" content="The familiar path from code to cloud." />
+        <meta name="theme-color" content="#000000" />
       </Head>
       {isLogin ? (
         <Component {...pageProps} />

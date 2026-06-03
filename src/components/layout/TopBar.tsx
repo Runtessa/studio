@@ -104,10 +104,10 @@ export const TopBar = ({ onMenuToggle }: TopBarProps) => {
           </Button>
           <div className="px-4 py-2 text-left">
             <div className="text-xs font-semibold uppercase tracking-[0.12em] text-textMuted">
-              ADA Idp
+              Ashna CloudWay
             </div>
             <div className="text-sm font-semibold text-textPrimary">
-              Control Panel
+              CloudWay Console
             </div>
           </div>
         </div>

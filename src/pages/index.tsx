@@ -7,7 +7,7 @@ export default function Home() {
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
         <div className="space-y-2 text-left">
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-textMuted">
-            ADA Idp Control Panel
+            Ashna CloudWay
           </p>
           <h1 className="text-3xl font-semibold text-textPrimary">Secure Operations Console</h1>
           <p className="text-sm text-textMuted">

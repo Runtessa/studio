@@ -1,7 +1,14 @@
 {
-  "brand_name": "ADA",
-  "app_title": "Welcome back",
-  "copyright": "ADA Internal developer platform",
-  "logo_lw": "/images/lw.png",
-  "logo_lm": "/images/lm.png"
+  "brand_name": "Ashna CloudWay",
+  "short_name": "CloudWay",
+  "app_title": "Welcome to Ashna CloudWay",
+  "tagline": "The familiar path from code to cloud.",
+  "description": "Create services, manage deployments, observe runtime health, and follow golden paths from one internal developer platform.",
+  "login_title": "Sign in to Ashna CloudWay",
+  "login_subtitle": "Access your internal developer platform.",
+  "copyright": "Ashna CloudWay internal developer platform",
+  "logo_lw": "/brand/ashna-cloudway-logo-white-on-black.png",
+  "logo_lm": "/brand/ashna-cloudway-icon-white-transparent.png",
+  "logo_white": "/brand/ashna-cloudway-logo-white-on-black.png",
+  "logo_icon": "/brand/ashna-cloudway-icon-white-transparent.png"
 }
