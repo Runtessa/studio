@@ -277,6 +277,11 @@ const buildReadWriteSecretRef = (adapter: string, key: string) => ({
 });
 
 const DEFAULT_TEMPLATE_CONFIG = {
+  branding: {
+    title: '',
+    faviconUrl: '',
+    appleTouchIconUrl: '',
+  },
   adapters: {
     postgres: {
       primary: buildReadWriteSecretRef('postgres', 'primary'),
@@ -431,7 +436,14 @@ export const buildAdapterConfigTemplate = (
   adapterAccess: AdapterAccess,
   secretKeys: string[]
 ) => {
-  const config: Record<string, any> = { adapters: {} as Record<string, any> };
+  const config: Record<string, any> = {
+    branding: {
+      title: '',
+      faviconUrl: '',
+      appleTouchIconUrl: '',
+    },
+    adapters: {} as Record<string, any>,
+  };
   const secretMap: Record<string, string[]> = {};
 
   secretKeys.forEach((keyName) => {
