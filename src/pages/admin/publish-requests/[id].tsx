@@ -189,7 +189,7 @@ export default function PublishRequestDetailPage() {
   }
 
   return (
-    <div className="p-6 space-y-6 max-w-5xl mx-auto">
+    <div className="space-y-6">
       <div className="flex items-center gap-4 mb-2">
         <Button variant="secondary" size="xs" onClick={() => router.back()}>
           <FiArrowLeft className="mr-1" /> Back to list

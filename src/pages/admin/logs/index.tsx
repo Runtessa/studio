@@ -85,7 +85,7 @@ export default function AdminLogsPage() {
   }, [ready, token, page, filters.level, filters.source]);
 
   return (
-    <div className="page-container space-y-6 py-10">
+    <div className="space-y-6">
       <PageHeader title="System Logs" subtitle="Inspect backend activity and errors." />
 
       {error && (
