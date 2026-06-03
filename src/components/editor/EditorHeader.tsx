@@ -43,7 +43,13 @@ export function EditorHeader({
   onOpenImportReactApp,
 }: EditorHeaderProps) {
   const headerActionButtonClass =
-    'h-5 rounded-full border border-[#2a2d2e] bg-[#1b1b1b] px-2.5 text-[10px] text-gray-200 transition hover:bg-[#2a2d2e]';
+    'inline-flex h-6 items-center justify-center rounded-md bg-[#1b1b1b] px-2.5 text-[10px] font-semibold text-gray-200 transition hover:bg-[#2a2d2e] focus:outline-none focus:ring-1 focus:ring-[#0b5b96]/70';
+  const headerInputClass =
+    'h-6 rounded-md bg-[#1b1b1b] px-2 text-[10px] text-gray-200 placeholder:text-gray-500 transition focus:outline-none focus:ring-1 focus:ring-[#0b5b96]/70';
+  const headerToggleButtonClass =
+    'inline-flex h-6 items-center justify-center rounded-md px-3 text-[10px] font-semibold transition focus:outline-none';
+  const activeToggleClass = 'bg-[#0b5b96] text-white';
+  const inactiveToggleClass = 'text-gray-400 hover:bg-[#2a2d2e] hover:text-gray-200';
 
   return (
     <header className="relative flex h-[34px] items-center border-b border-[#2a2d2e] bg-[#252526] px-2">
@@ -72,14 +78,14 @@ export function EditorHeader({
           <button
             type="button"
             onClick={onOpenImportReactApp}
-            className={`${headerActionButtonClass} font-semibold uppercase tracking-wide`}
+            className={`${headerActionButtonClass} uppercase tracking-wide`}
             title="Import existing React app into current tenant"
           >
             Import App
           </button>
         )}
         {editorView === 'preview' && (
-          <div className="flex items-center gap-2 rounded-full border border-[#2a2d2e] bg-[#1f1f1f] px-2 py-0.5 text-[10px] text-gray-400">
+          <div className="flex items-center gap-2 rounded-md bg-[#1f1f1f] px-2 py-0.5 text-[10px] text-gray-400">
             <span className="uppercase tracking-[0.2em]">Port</span>
             <input
               value={previewPort}
@@ -87,7 +93,7 @@ export function EditorHeader({
                 onPreviewPortChange(event.target.value.replace(/[^0-9]/g, ''))
               }
               placeholder={defaultPreviewPort}
-              className="h-5 w-16 rounded border border-[#2a2d2e] bg-[#1b1b1b] px-2 text-[10px] text-gray-200 placeholder:text-gray-500 focus:border-[#0b5b96] focus:outline-none"
+              className={`${headerInputClass} w-16`}
             />
             <span className="uppercase tracking-[0.2em]">Stage</span>
             <select
@@ -95,7 +101,7 @@ export function EditorHeader({
               onChange={(event) =>
                 onPreviewStageChange(event.target.value === 'published' ? 'published' : 'draft')
               }
-              className="h-5 rounded border border-[#2a2d2e] bg-[#1b1b1b] px-2 text-[10px] text-gray-200 focus:border-[#0b5b96] focus:outline-none"
+              className={headerInputClass}
               title="Draft loads unpublished latest changes. Published loads tenant published state."
             >
               <option value="draft">Draft</option>
@@ -112,7 +118,7 @@ export function EditorHeader({
                 }
               }}
               placeholder="/"
-              className="h-5 w-72 rounded border border-[#2a2d2e] bg-[#1b1b1b] px-2 text-[10px] text-gray-200 placeholder:text-gray-500 focus:border-[#0b5b96] focus:outline-none"
+              className={`${headerInputClass} w-72`}
               title="Preview route inside the iframe app (example: /dashboard?tab=home)."
             />
             <button
@@ -142,10 +148,10 @@ export function EditorHeader({
             <button
               type="button"
               onClick={onTogglePreviewInspect}
-              className={`h-5 rounded-full border px-2.5 text-[10px] ${
+              className={`${headerActionButtonClass} ${
                 previewInspectOpen
-                  ? 'border-[#0b5b96] bg-[#0b5b96] text-white'
-                  : 'border-[#2a2d2e] bg-[#1b1b1b] text-gray-200 hover:bg-[#2a2d2e]'
+                  ? 'bg-[#0b5b96] text-white'
+                  : ''
               }`}
               title="Toggle preview inspect panel"
             >
@@ -153,14 +159,12 @@ export function EditorHeader({
             </button>
           </div>
         )}
-        <div className="flex items-center gap-3 rounded-full border border-[#2a2d2e] bg-[#1f1f1f] p-0.5 text-[10px] uppercase tracking-wide text-gray-300">
+        <div className="flex items-center gap-1 rounded-md bg-[#1f1f1f] p-0.5 text-[10px] uppercase tracking-wide text-gray-300">
           <button
             type="button"
             onClick={onSwitchToCode}
-            className={`rounded-full px-3 py-0.5 transition ${
-              editorView === 'code'
-                ? 'bg-[#0b5b96] text-white'
-                : 'text-gray-400 hover:text-gray-200'
+            className={`${headerToggleButtonClass} ${
+              editorView === 'code' ? activeToggleClass : inactiveToggleClass
             }`}
           >
             Code
@@ -168,10 +172,8 @@ export function EditorHeader({
           <button
             type="button"
             onClick={onSwitchToPreview}
-            className={`rounded-full px-3 py-0.5 transition ${
-              editorView === 'preview'
-                ? 'bg-[#0b5b96] text-white'
-                : 'text-gray-400 hover:text-gray-200'
+            className={`${headerToggleButtonClass} ${
+              editorView === 'preview' ? activeToggleClass : inactiveToggleClass
             }`}
           >
             Preview
