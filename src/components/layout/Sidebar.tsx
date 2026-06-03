@@ -4,7 +4,6 @@ import { useRouter } from "next/router";
 import {
   FiGrid,
   FiSettings,
-  FiFileText,
   FiUsers,
   FiCode,
   FiLayers,
@@ -35,7 +34,6 @@ type NavItem = {
 
 const navItems: NavItem[] = [
   { label: "Dashboard", href: "/dashboard", icon: FiGrid, match: "/dashboard" },
-  { label: "Docs", href: "/docs", icon: FiFileText, match: "/docs" },
   { label: "Editor", href: "/editor", icon: FiCode, match: "/editor" },
   {
     label: "Tenants",

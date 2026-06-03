@@ -29,7 +29,7 @@ export default function Home() {
             <li>Review your authenticated session and profile details.</li>
             <li>Manage users, roles, and API access tokens.</li>
             <li>Track audit logs for sign-ins and API activity.</li>
-            <li>Consult API documentation for integration steps.</li>
+            <li>Track audit logs for operational visibility.</li>
           </ul>
         </DataCard>
       </div>

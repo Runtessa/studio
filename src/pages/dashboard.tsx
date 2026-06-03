@@ -49,11 +49,6 @@ export default function DashboardPage() {
         href: '/profile',
         description: 'Update your email and password.',
       },
-      {
-        label: 'API documentation',
-        href: '/docs',
-        description: 'Review available endpoints.',
-      },
     ];
     if (hasPermissionFromUser(user, 'ide.users.read')) {
       links.push({
@@ -80,11 +75,6 @@ export default function DashboardPage() {
       <PageHeader
         title="Dashboard"
         subtitle="Secure control panel for account access and audit visibility."
-        actions={
-          <Button href="/docs" variant="primary" size="md">
-            View docs
-          </Button>
-        }
       />
 
       {error && (

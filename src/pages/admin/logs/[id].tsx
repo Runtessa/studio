@@ -5,55 +5,15 @@ import { DataCard } from '@/components/ui/DataCard';
 import { Button } from '@/components/ui/Button';
 import { useSessionToken } from '@/lib/client/session';
 import { fetchJson } from '@/lib/client/api';
-
-type ErrorFrame = {
-  file?: string;
-  line?: number;
-  column?: number;
-  method?: string;
-};
-
-type LogDetail = {
-  id: number;
-  level: string;
-  source: string;
-  action?: string | null;
-  message?: string | null;
-  meta?: any;
-  createdAt?: string;
-};
-
-const levelTone = (level: string) => {
-  const l = (level || '').toLowerCase();
-  if (l === 'error') return 'bg-danger/20 text-danger border border-danger/30';
-  if (l === 'warning' || l === 'warn') return 'bg-warning/20 text-warning border border-warning/30';
-  return 'bg-primary/10 text-accent border border-primary/30';
-};
-
-const levelLabel = (level: string) => {
-  const l = (level || '').toLowerCase();
-  if (l === 'error') return 'Error';
-  if (l === 'warning' || l === 'warn') return 'Warning';
-  return 'Info';
-};
-
-const formatDate = (value?: string) => {
-  if (!value) return '-';
-  return new Date(value).toLocaleString();
-};
-
-const renderMeta = (meta: any) => {
-  if (!meta) return '-';
-  try {
-    return (
-      <pre className="whitespace-pre-wrap rounded-lg bg-bgApp p-3 text-xs text-textPrimary">
-        {JSON.stringify(meta, null, 2)}
-      </pre>
-    );
-  } catch {
-    return String(meta);
-  }
-};
+import { LogCodeViewer } from '@/components/admin/logs/LogCodeViewer';
+import {
+  formatDate,
+  formatMeta,
+  levelLabel,
+  levelTone,
+  type ErrorFrame,
+  type LogDetail,
+} from '@/components/admin/logs/logDetail';
 
 export default function AdminLogDetailPage() {
   const router = useRouter();
@@ -80,6 +40,7 @@ export default function AdminLogDetailPage() {
 
   const errorMeta = log?.meta?.error;
   const topFrame = frames[0];
+  const metadataText = useMemo(() => formatMeta(log?.meta), [log?.meta]);
 
   useEffect(() => {
     const load = async () => {
@@ -100,7 +61,7 @@ export default function AdminLogDetailPage() {
   }, [router.isReady, id, ready, token]);
 
   return (
-    <div className="page-container space-y-6 py-10">
+    <div className="space-y-6">
       <PageHeader
         title="Log Details"
         subtitle="Full log payload and metadata."
@@ -159,7 +120,16 @@ export default function AdminLogDetailPage() {
 
             <div className="space-y-1">
               <div className="text-sm font-semibold text-textPrimary">Metadata</div>
-              {renderMeta(log.meta)}
+              {metadataText ? (
+                <LogCodeViewer
+                  value={metadataText}
+                  language="json"
+                  path={`log://${log.id}/metadata.json`}
+                  height={320}
+                />
+              ) : (
+                <div className="text-sm text-textMuted">-</div>
+              )}
             </div>
 
             {frames.length > 0 && (
@@ -193,9 +163,12 @@ export default function AdminLogDetailPage() {
             {stackTrace && (
               <div className="space-y-2">
                 <div className="text-sm font-semibold text-textPrimary">Stack Trace</div>
-                <pre className="whitespace-pre-wrap rounded-lg bg-bgApp p-3 text-xs text-textMuted">
-                  {stackTrace}
-                </pre>
+                <LogCodeViewer
+                  value={stackTrace}
+                  language="plaintext"
+                  path={`log://${log.id}/stacktrace.txt`}
+                  height={360}
+                />
               </div>
             )}
           </div>
