@@ -173,6 +173,7 @@ export const Sidebar = ({ open, onClose }: SidebarProps) => {
                 alt={branding.brand_name}
                 width={100}
                 height={30}
+                className="theme-aware-logo"
               />
             </div>
           </div>

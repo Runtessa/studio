@@ -69,6 +69,7 @@ type EditorWorkspaceProps = {
   isSharedMode: boolean;
   uiCount: number;
   editorAreaRef: React.RefObject<HTMLDivElement | null>;
+  monacoTheme: 'vs-dark' | 'vs-light';
 };
 
 export function EditorWorkspace({
@@ -111,6 +112,7 @@ export function EditorWorkspace({
   isSharedMode,
   uiCount,
   editorAreaRef,
+  monacoTheme,
 }: EditorWorkspaceProps) {
   const showAclForm = editorView === 'code' && !showDiff && Boolean(aclFormFile);
 
@@ -144,7 +146,7 @@ export function EditorWorkspace({
               <MonacoEditor
                 height="100%"
                 language={mainEditorLanguage}
-                theme="vs-dark"
+                theme={monacoTheme}
                 value={mainEditorValue}
                 path={mainEditorPath}
                 keepCurrentModel
@@ -177,7 +179,7 @@ export function EditorWorkspace({
                     flexBasis: `${(1 - splitRatio) * 100}%`,
                     flexGrow: 0,
                     flexShrink: 0,
-                    borderLeft: '1px solid #2a2d2e',
+                    borderLeft: '1px solid rgb(var(--color-border-subtle))',
                   }
                 : undefined
             }
@@ -186,7 +188,7 @@ export function EditorWorkspace({
               <MonacoEditor
                 height="100%"
                 language={sideEditorLanguage}
-                theme="vs-dark"
+                theme={monacoTheme}
                 value={sideEditorValue}
                 path={sideEditorPath}
                 keepCurrentModel
@@ -207,7 +209,7 @@ export function EditorWorkspace({
           <MonacoDiffEditor
             height="100%"
             language={mainEditorLanguage}
-            theme="vs-dark"
+            theme={monacoTheme}
             original={diffOriginal}
             modified={mainEditorValue}
             originalModelPath={diffModelPaths.original}

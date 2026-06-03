@@ -55,6 +55,7 @@ export function EditorHeader({
               alt={branding.brand_name}
               width={18}
               height={18}
+              className="theme-aware-logo"
             />
           </span>
           <div className="leading-tight">

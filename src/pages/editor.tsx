@@ -7,6 +7,7 @@ import { ExplorerNode } from '@/components/FileExplorer';
 import { useToast } from '@/components/ui/Toast';
 import { useSessionToken } from '@/lib/client/session';
 import { getSelectedTenantHost } from '@/lib/client/tenant';
+import { useIdeTheme } from '@/lib/client/theme';
 import { useEditorApi } from '@/components/editor/hooks/useEditorApi';
 import { usePreviewExceptionTelemetry } from '@/components/editor/hooks/usePreviewExceptionTelemetry';
 import { useMoveNodeRequest } from '@/components/editor/hooks/useMoveNodeRequest';
@@ -197,6 +198,7 @@ declare global {
 }
 
 export default function EditorPage() {
+  const { theme } = useIdeTheme();
   const router = useRouter();
   const { token, clear, ready } = useSessionToken();
   const { success, error: showError } = useToast();
@@ -2252,7 +2254,7 @@ export default function EditorPage() {
   return (
     <>
       <Script src="/babel/bable.js" strategy="afterInteractive" />
-      <div className="flex h-screen flex-col bg-[#1e1e1e] text-gray-100">
+      <div className="ide-editor-shell flex h-screen flex-col bg-[#1e1e1e] text-gray-100">
         <EditorHeader
           branding={branding}
           editorView={editorView}
@@ -2474,6 +2476,7 @@ export default function EditorPage() {
               isSharedMode={isSharedMode}
               uiCount={uiData.length}
               editorAreaRef={editorAreaRef}
+              monacoTheme={theme === 'light' ? 'vs-light' : 'vs-dark'}
             />
           </main>
 

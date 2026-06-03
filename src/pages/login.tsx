@@ -70,6 +70,7 @@ export default function Login() {
                     alt={branding.brand_name}
                     width={200}
                     height={50}
+                    className="theme-aware-logo"
                     priority
                   />
                 </div>

@@ -91,6 +91,82 @@ button {
   .divider {
     @apply border-t border-borderSubtle;
   }
+  .theme-aware-logo {
+    transition: filter 160ms ease, opacity 160ms ease;
+  }
+  [data-theme="light"] .theme-aware-logo {
+    filter: grayscale(1) invert(1) brightness(0.55) contrast(1.05);
+    mix-blend-mode: multiply;
+    opacity: 0.72;
+  }
+  [data-theme="light"] .ide-editor-shell {
+    background: rgb(var(--color-bg-app));
+    color: rgb(var(--color-text-primary));
+  }
+  [data-theme="light"] .ide-editor-shell [class*="bg-[#1e1e1e]"] {
+    background-color: rgb(var(--color-bg-app)) !important;
+  }
+  [data-theme="light"] .ide-editor-shell [class*="bg-[#252526]"],
+  [data-theme="light"] .ide-editor-shell [class*="bg-[#1f1f1f]"],
+  [data-theme="light"] .ide-editor-shell [class*="bg-[#18191b]"],
+  [data-theme="light"] .ide-editor-shell [class*="bg-[#171717]"] {
+    background-color: rgb(var(--color-bg-surface)) !important;
+  }
+  [data-theme="light"] .ide-editor-shell [class*="bg-[#1b1b1b]"],
+  [data-theme="light"] .ide-editor-shell [class*="bg-[#161616]"],
+  [data-theme="light"] .ide-editor-shell [class*="bg-[#151515]"],
+  [data-theme="light"] .ide-editor-shell [class*="bg-[#111111]"],
+  [data-theme="light"] .ide-editor-shell [class*="bg-[#0f0f0f]"] {
+    background-color: rgb(var(--color-surface-muted)) !important;
+  }
+  [data-theme="light"] .ide-editor-shell [class*="border-[#2a2d2e]"],
+  [data-theme="light"] .ide-editor-shell [class*="border-[#3c3c3c]"],
+  [data-theme="light"] .ide-editor-shell [class*="border-[#3e3e42]"] {
+    border-color: rgb(var(--color-border-subtle)) !important;
+  }
+  [data-theme="light"] .ide-editor-shell [class*="text-gray-100"],
+  [data-theme="light"] .ide-editor-shell [class*="text-gray-200"],
+  [data-theme="light"] .ide-editor-shell [class*="text-gray-300"] {
+    color: rgb(var(--color-text-primary)) !important;
+  }
+  [data-theme="light"] .ide-editor-shell [class*="text-gray-400"],
+  [data-theme="light"] .ide-editor-shell [class*="text-gray-500"],
+  [data-theme="light"] .ide-editor-shell [class*="text-gray-600"] {
+    color: rgb(var(--color-text-muted)) !important;
+  }
+  [data-theme="light"] .ide-editor-shell [class*="hover:bg-[#2a2d2e]"]:hover,
+  [data-theme="light"] .ide-editor-shell [class*="hover:bg-[#1f1f1f]"]:hover {
+    background-color: rgb(var(--color-surface-muted)) !important;
+  }
+  [data-theme="light"] .ide-editor-shell [class*="hover:text-gray-200"]:hover {
+    color: rgb(var(--color-text-primary)) !important;
+  }
+  [data-theme="light"] .ide-editor-shell [class*="bg-gray-900"] {
+    background-color: rgb(var(--color-bg-surface)) !important;
+    color: rgb(var(--color-text-primary)) !important;
+  }
+  [data-theme="light"] .ide-editor-shell [class*="border-gray-700"] {
+    border-color: rgb(var(--color-border-subtle)) !important;
+  }
+  [data-theme="light"] .ide-editor-shell [class*="text-white"] {
+    color: rgb(var(--color-text-primary)) !important;
+  }
+  [data-theme="light"] .ide-editor-shell [class*="bg-[#0b5b96]"],
+  [data-theme="light"] .ide-editor-shell [class*="bg-[#094771]"] {
+    background-color: rgb(var(--color-primary-dark)) !important;
+    border-color: rgb(var(--color-primary)) !important;
+    color: rgb(var(--color-text-primary)) !important;
+  }
+  [data-theme="light"] .ide-editor-shell [class*="hover:bg-[#0b5b96]"]:hover,
+  [data-theme="light"] .ide-editor-shell [class*="hover:bg-[#1177bb]"]:hover,
+  [data-theme="light"] .ide-editor-shell [class*="hover:bg-[#0f72be]"]:hover {
+    background-color: rgb(var(--color-surface-strong)) !important;
+  }
+  [data-theme="light"] .ide-editor-shell input,
+  [data-theme="light"] .ide-editor-shell select,
+  [data-theme="light"] .ide-editor-shell textarea {
+    color: rgb(var(--color-text-primary));
+  }
 }
 
 @layer utilities {
