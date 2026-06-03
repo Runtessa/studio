@@ -19,7 +19,7 @@ export default function App({ Component, pageProps }: AppProps) {
         <title>Ashna CloudWay</title>
         <meta name="application-name" content="Ashna CloudWay" />
         <meta name="description" content="The familiar path from code to cloud." />
-        <meta name="theme-color" content="#000000" />
+        <meta name="theme-color" content="#121212" />
       </Head>
       {isLogin ? (
         <Component {...pageProps} />

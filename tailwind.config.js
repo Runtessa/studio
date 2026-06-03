@@ -11,22 +11,22 @@ const config = {
         sans: ['"Inter"', '"Vazirmatn"', "system-ui", "sans-serif"],
       },
       boxShadow: {
-        soft: "0 1px 3px rgba(0,0,0,0.35)",
+        soft: "var(--shadow-soft)",
       },
       colors: {
         // Brand
-        primary: "#262525ff", // Green-500 (Minty)
-        primaryDark: "#191919ff", // Green-700
-        accent: "#4ADE80", // Green-400
+        primary: "rgb(var(--color-primary) / <alpha-value>)", // Original dark brand
+        primaryDark: "rgb(var(--color-primary-dark) / <alpha-value>)", // Original dark brand surface
+        accent: "rgb(var(--color-accent) / <alpha-value>)", // Original green accent
 
         // Base Backgrounds (Neutral/Gray)
-        bgApp: "#121212", // Pure Dark
-        bgSurface: "#1E1E1E", // Elevation 1
-        borderSubtle: "#2A2A2A", // Subtle Gray
+        bgApp: "rgb(var(--color-bg-app) / <alpha-value>)", // App base
+        bgSurface: "rgb(var(--color-bg-surface) / <alpha-value>)", // Elevated surface
+        borderSubtle: "rgb(var(--color-border-subtle) / <alpha-value>)", // Soft border
 
         // Text
-        textPrimary: "#FFFFFF", // Pure White
-        textMuted: "#A3A3A3", // Neutral-400
+        textPrimary: "rgb(var(--color-text-primary) / <alpha-value>)", // Primary text
+        textMuted: "rgb(var(--color-text-muted) / <alpha-value>)", // Muted text
 
         // Status
         danger: "#DC2626",
@@ -34,16 +34,16 @@ const config = {
         success: "#22C55E",
 
         // Duplicate keys (Strictly preserving your structure)
-        bgSidebar: "#121212",
+        bgSidebar: "rgb(var(--color-bg-app) / <alpha-value>)",
         surface: {
-          DEFAULT: "#1E1E1E",
-          muted: "#262626",
-          strong: "#000000",
+          DEFAULT: "rgb(var(--color-bg-surface) / <alpha-value>)",
+          muted: "rgb(var(--color-surface-muted) / <alpha-value>)",
+          strong: "rgb(var(--color-surface-strong) / <alpha-value>)",
         },
-        border: "#2A2A2A",
+        border: "rgb(var(--color-border-subtle) / <alpha-value>)",
         text: {
-          primary: "#FFFFFF",
-          muted: "#A3A3A3",
+          primary: "rgb(var(--color-text-primary) / <alpha-value>)",
+          muted: "rgb(var(--color-text-muted) / <alpha-value>)",
         },
       },
     },

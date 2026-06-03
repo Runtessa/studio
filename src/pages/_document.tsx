@@ -1,5 +1,18 @@
 import Document, { Html, Head, Main, NextScript } from "next/document";
 
+const themeScript = `
+(function () {
+  try {
+    var theme = localStorage.getItem("ashna-cloudway.theme");
+    if (theme !== "light" && theme !== "dark") theme = "dark";
+    document.documentElement.dataset.theme = theme;
+    document.documentElement.style.colorScheme = theme;
+  } catch (_) {
+    document.documentElement.dataset.theme = "dark";
+  }
+})();
+`;
+
 class MyDocument extends Document {
   render() {
     return (
@@ -12,6 +25,7 @@ class MyDocument extends Document {
             crossOrigin="anonymous"
           />
           <link rel="icon" href="/brand/ashna-cloudway-icon-white-transparent.png" />
+          <script dangerouslySetInnerHTML={{ __html: themeScript }} />
         </Head>
         <body className="bg-bgApp text-textPrimary">
           <Main />

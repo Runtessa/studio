@@ -4,8 +4,35 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
+:root,
+[data-theme="dark"] {
   color-scheme: dark;
+  --color-primary: 38 37 37;
+  --color-primary-dark: 25 25 25;
+  --color-accent: 74 222 128;
+  --color-bg-app: 18 18 18;
+  --color-bg-surface: 30 30 30;
+  --color-border-subtle: 42 42 42;
+  --color-text-primary: 255 255 255;
+  --color-text-muted: 163 163 163;
+  --color-surface-muted: 38 38 38;
+  --color-surface-strong: 0 0 0;
+  --shadow-soft: 0 1px 3px rgba(0,0,0,0.35);
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+  --color-primary: 100 116 139;
+  --color-primary-dark: 226 232 240;
+  --color-accent: 71 85 105;
+  --color-bg-app: 248 250 252;
+  --color-bg-surface: 255 255 255;
+  --color-border-subtle: 214 222 232;
+  --color-text-primary: 15 23 42;
+  --color-text-muted: 100 116 139;
+  --color-surface-muted: 241 245 249;
+  --color-surface-strong: 226 232 240;
+  --shadow-soft: 0 14px 36px -28px rgba(15,23,42,0.35);
 }
 
 * {
@@ -20,6 +47,7 @@ body {
   @apply bg-bgApp text-textPrimary;
   min-height: 100vh;
   direction: ltr;
+  background: rgb(var(--color-bg-app));
 }
 
 a {

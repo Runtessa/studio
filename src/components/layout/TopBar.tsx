@@ -1,10 +1,11 @@
 import Link from "next/link";
 import { useRouter } from "next/router";
 import { useEffect, useState } from "react";
-import { FiLogOut, FiMenu, FiUser } from "react-icons/fi";
+import { FiLogOut, FiMenu, FiMoon, FiSun, FiUser } from "react-icons/fi";
 import { useSessionToken } from "@/lib/client/session";
 import { Button } from "@/components/ui/Button";
 import { fetchJson } from "@/lib/client/api";
+import { useIdeTheme } from "@/lib/client/theme";
 
 type TopBarProps = {
   onMenuToggle?: () => void;
@@ -32,6 +33,7 @@ export const TopBar = ({ onMenuToggle }: TopBarProps) => {
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [user, setUser] = useState<MeUser | null>(null);
   const [switchingTeam, setSwitchingTeam] = useState(false);
+  const { theme, toggleTheme } = useIdeTheme();
 
   const handleLogout = async () => {
     try {
@@ -113,6 +115,19 @@ export const TopBar = ({ onMenuToggle }: TopBarProps) => {
         </div>
 
         <div className="flex flex-1 flex-row items-center justify-end gap-3">
+          <button
+            type="button"
+            onClick={toggleTheme}
+            className="flex h-10 w-10 items-center justify-center rounded-full border border-borderSubtle bg-bgApp text-textMuted transition hover:border-accent/60 hover:text-textPrimary focus:outline-none focus:ring-2 focus:ring-primary/30"
+            aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+            title={theme === "dark" ? "Light theme" : "Dark theme"}
+          >
+            {theme === "dark" ? (
+              <FiSun className="h-4 w-4" />
+            ) : (
+              <FiMoon className="h-4 w-4" />
+            )}
+          </button>
           {token ? (
             <div className="relative">
               <button
