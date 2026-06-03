@@ -1,9 +1,1 @@
-export type TenantPwaFormState = {
-  enabled: boolean;
-  name: string;
-  shortName: string;
-  themeColor: string;
-  backgroundColor: string;
-  startUrl: string;
-  scope: string;
-};
+export type { TenantPwaFormState } from '@/lib/tenant-config-validation';

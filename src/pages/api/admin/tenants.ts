@@ -10,29 +10,16 @@ import { canonicalizeAdapterConfig, parseAdapterConfig } from '@/lib/tenant-adap
 import { canWriteTenantForUser, getTenantScopeForUser } from '@/lib/team-tenant-access';
 import { seedTenantStarterProject } from '@/lib/tenantStarterProject';
 import { DEFAULT_PWA_CONFIG, normalizePwaConfig } from '@/lib/tenant-pwa-config';
+import { normalizeBoundedInteger, normalizeTenantHostname } from '@/lib/tenant-config-validation';
 
 const DEFAULT_RESOURCE_CONFIG = { memory: 512, timeout: 5000 };
 const DEFAULT_AUTH_DB_CONFIG = { mode: 'shared' as const, secretKey: null as string | null };
+const DEFAULT_BRANDING_CONFIG = { title: '', faviconUrl: '', appleTouchIconUrl: '' };
 
-const normalizeHostname = (raw: unknown) => {
-  if (typeof raw !== 'string' || !raw.trim()) {
-    const err = new Error('hostname is required');
-    (err as any).statusCode = 400;
-    throw err;
-  }
-  return raw.trim();
-};
+const normalizeHostname = (raw: unknown) => normalizeTenantHostname(raw);
 
-const normalizeNumber = (raw: unknown, label: string, fallback: number) => {
-  if (raw === undefined || raw === null || raw === '') return fallback;
-  const value = typeof raw === 'number' ? raw : Number(raw);
-  if (!Number.isFinite(value) || value <= 0) {
-    const err = new Error(`${label} must be a positive number`);
-    (err as any).statusCode = 400;
-    throw err;
-  }
-  return value;
-};
+const normalizeNumber = (raw: unknown, label: string, fallback: number) =>
+  normalizeBoundedInteger(raw, label, fallback, label.includes('memory') ? 64 : 100, label.includes('memory') ? 262144 : 300000);
 
 const normalizeResourceConfig = (
   raw: unknown,
@@ -92,6 +79,73 @@ const normalizeAuthDbConfig = (
   } as { mode: 'shared' | 'dedicated'; secretKey?: string | null };
 };
 
+const normalizeBrandingConfig = (
+  raw: unknown,
+  fallback: { title?: string; faviconUrl?: string; appleTouchIconUrl?: string } = DEFAULT_BRANDING_CONFIG
+) => {
+  if (raw === undefined || raw === null) return fallback;
+  if (typeof raw !== 'object' || Array.isArray(raw)) {
+    const err = new Error('brandingConfig must be an object');
+    (err as any).statusCode = 400;
+    throw err;
+  }
+  const values = raw as Record<string, unknown>;
+  return {
+    title: typeof values.title === 'string' ? values.title.trim() : fallback.title || '',
+    faviconUrl:
+      typeof values.faviconUrl === 'string' ? values.faviconUrl.trim() : fallback.faviconUrl || '',
+    appleTouchIconUrl:
+      typeof values.appleTouchIconUrl === 'string'
+        ? values.appleTouchIconUrl.trim()
+        : fallback.appleTouchIconUrl || '',
+  };
+};
+
+const readLegacyBrandingConfig = (rawAdapterConfig: unknown) => {
+  const adapterConfig = (rawAdapterConfig && typeof rawAdapterConfig === 'object' && !Array.isArray(rawAdapterConfig))
+    ? (rawAdapterConfig as Record<string, unknown>)
+    : {};
+  const settings =
+    adapterConfig.settings &&
+    typeof adapterConfig.settings === 'object' &&
+    !Array.isArray(adapterConfig.settings)
+      ? (adapterConfig.settings as Record<string, unknown>)
+      : {};
+  const settingsBranding =
+    settings.branding &&
+    typeof settings.branding === 'object' &&
+    !Array.isArray(settings.branding)
+      ? (settings.branding as Record<string, unknown>)
+      : {};
+  const rootBranding =
+    adapterConfig.branding &&
+    typeof adapterConfig.branding === 'object' &&
+    !Array.isArray(adapterConfig.branding)
+      ? (adapterConfig.branding as Record<string, unknown>)
+      : {};
+
+  return {
+    title:
+      typeof rootBranding.title === 'string'
+        ? rootBranding.title
+        : typeof settingsBranding.title === 'string'
+          ? settingsBranding.title
+          : '',
+    faviconUrl:
+      typeof rootBranding.faviconUrl === 'string'
+        ? rootBranding.faviconUrl
+        : typeof settingsBranding.faviconUrl === 'string'
+          ? settingsBranding.faviconUrl
+          : '',
+    appleTouchIconUrl:
+      typeof rootBranding.appleTouchIconUrl === 'string'
+        ? rootBranding.appleTouchIconUrl
+        : typeof settingsBranding.appleTouchIconUrl === 'string'
+          ? settingsBranding.appleTouchIconUrl
+          : '',
+  };
+};
+
 const parseAdapterConfigObject = (raw: unknown): Record<string, unknown> | null => {
   if (raw === undefined || raw === null) return null;
   if (typeof raw === 'string') {
@@ -124,9 +178,13 @@ const serializeTenant = (tenant: Tenant, canWrite: boolean) => ({
   allowRegistration: tenant.allowRegistration ?? true,
   resourceConfig: tenant.resourceConfig,
   adapterAccess: tenant.adapterAccess ?? {},
-  adapterConfig: tenant.adapterConfig ?? {},
+  adapterConfig: canonicalizeAdapterConfig(tenant.adapterConfig ?? {}),
   authDbConfig: tenant.authDbConfig ?? DEFAULT_AUTH_DB_CONFIG,
   pwaConfig: normalizePwaConfig(tenant.pwaConfig, DEFAULT_PWA_CONFIG),
+  brandingConfig: normalizeBrandingConfig(
+    (tenant as any).brandingConfig,
+    readLegacyBrandingConfig(tenant.adapterConfig ?? {})
+  ),
   canWrite,
   createdAt: tenant.createdAt,
   updatedAt: tenant.updatedAt,
@@ -193,7 +251,8 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
     const allowRegistration = normalizeBoolean(req.body?.allowRegistration, true);
     const resourceConfig = normalizeResourceConfig(req.body?.resourceConfig, DEFAULT_RESOURCE_CONFIG);
     const authDbConfig = normalizeAuthDbConfig(req.body?.authDbConfig, DEFAULT_AUTH_DB_CONFIG);
-    const pwaConfig = normalizePwaConfig(req.body?.pwaConfig, DEFAULT_PWA_CONFIG);
+    const pwaConfig = normalizePwaConfig(req.body?.pwaConfig, DEFAULT_PWA_CONFIG, { strict: true });
+    const brandingConfig = normalizeBrandingConfig(req.body?.brandingConfig, DEFAULT_BRANDING_CONFIG);
     const configObject = parseAdapterConfigObject(req.body?.adapterConfig);
     const adapterConfig = parseAdapterConfig(configObject);
     const normalizedAdapterConfig = canonicalizeAdapterConfig(configObject);
@@ -216,6 +275,7 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
         resourceConfig,
         authDbConfig,
         pwaConfig,
+        brandingConfig: brandingConfig as any,
         adapterAccess,
         adapterConfig: normalizedAdapterConfig,
       });

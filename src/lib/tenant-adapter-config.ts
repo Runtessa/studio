@@ -133,16 +133,16 @@ const parseSecretKeyParts = (keyName: string): { adapter: string; adapterKey: st
   if (parts.length < 2) return null;
 
   if (parts[0]?.toLowerCase() === 'adapter' && parts.length >= 3) {
-    const adapter = parts[1].toLowerCase();
-    const adapterKey = parts[2].toLowerCase();
-    if (!ADAPTER_KEYS.includes(adapter as (typeof ADAPTER_KEYS)[number])) return null;
+    const adapter = normalizeAdapterKey(parts[1]);
+    const adapterKey = normalizeAdapterKey(parts[2]);
+    if (!adapter) return null;
     if (!adapterKey) return null;
     return { adapter, adapterKey };
   }
 
-  const adapter = parts[0].toLowerCase();
-  if (!ADAPTER_KEYS.includes(adapter as (typeof ADAPTER_KEYS)[number])) return null;
-  const adapterKey = parts[1].toLowerCase();
+  const adapter = normalizeAdapterKey(parts[0]);
+  const adapterKey = normalizeAdapterKey(parts[1]);
+  if (!adapter) return null;
   if (!adapterKey) return null;
   return { adapter, adapterKey };
 };
@@ -184,8 +184,9 @@ export const parseAdapterConfig = (
   const adapterAccess: AdapterAccess = {};
   const secrets: Record<string, string> = {};
 
-  ADAPTER_KEYS.forEach((adapter) => {
-    const block = adapters[adapter];
+  Object.entries(adapters).forEach(([rawAdapter, block]) => {
+    const adapter = normalizeAdapterKey(rawAdapter);
+    if (!adapter) return;
     if (!block || typeof block !== 'object') return;
     const blockObj = block as Record<string, unknown>;
     const hasLegacyShape = ['allow', 'allowed', 'whitelist', 'connections', 'connectionStrings', 'secrets'].some(
@@ -277,11 +278,6 @@ const buildReadWriteSecretRef = (adapter: string, key: string) => ({
 });
 
 const DEFAULT_TEMPLATE_CONFIG = {
-  branding: {
-    title: '',
-    faviconUrl: '',
-    appleTouchIconUrl: '',
-  },
   adapters: {
     postgres: {
       primary: buildReadWriteSecretRef('postgres', 'primary'),
@@ -379,21 +375,22 @@ const normalizeSqlSecretRefShape = (value: unknown): unknown => {
 
 export const canonicalizeAdapterConfig = (raw: unknown): Record<string, unknown> => {
   const config = asConfigObject(raw);
-  const adaptersRaw = ((config.adapters ?? {}) as Record<string, unknown>) || {};
   const adapters = normalizeAdaptersRoot(config);
   const normalizedAdapters: Record<string, unknown> = {};
+  const nextConfig: Record<string, unknown> = { ...config };
+  delete nextConfig.branding;
 
-  Object.entries(adaptersRaw).forEach(([rawKey, value]) => {
-    const lower = rawKey.toLowerCase();
-    if (!ADAPTER_KEYS.includes(lower as (typeof ADAPTER_KEYS)[number])) {
-      normalizedAdapters[rawKey] = value;
-    }
-  });
+  if (isObject(nextConfig.settings)) {
+    const nextSettings = { ...(nextConfig.settings as Record<string, unknown>) };
+    delete nextSettings.branding;
+    nextConfig.settings = nextSettings;
+  }
 
-  ADAPTER_KEYS.forEach((adapter) => {
-    const block = adapters[adapter];
+  Object.entries(adapters).forEach(([rawAdapter, block]) => {
+    const adapter = normalizeAdapterKey(rawAdapter);
+    if (!adapter) return;
     if (!isObject(block)) {
-      if (adapter in adaptersRaw) normalizedAdapters[adapter] = adaptersRaw[adapter];
+      normalizedAdapters[adapter] = block;
       return;
     }
     const blockObj = block as Record<string, unknown>;
@@ -427,7 +424,7 @@ export const canonicalizeAdapterConfig = (raw: unknown): Record<string, unknown>
   });
 
   return {
-    ...config,
+    ...nextConfig,
     adapters: normalizedAdapters,
   };
 };
@@ -437,11 +434,6 @@ export const buildAdapterConfigTemplate = (
   secretKeys: string[]
 ) => {
   const config: Record<string, any> = {
-    branding: {
-      title: '',
-      faviconUrl: '',
-      appleTouchIconUrl: '',
-    },
     adapters: {} as Record<string, any>,
   };
   const secretMap: Record<string, string[]> = {};
@@ -455,7 +447,13 @@ export const buildAdapterConfigTemplate = (
     }
   });
 
-  ADAPTER_KEYS.forEach((adapter) => {
+  const adapterKeys = new Set<string>([
+    ...ADAPTER_KEYS,
+    ...Object.keys(adapterAccess || {}),
+    ...Object.keys(secretMap),
+  ]);
+
+  adapterKeys.forEach((adapter) => {
     const allow = adapterAccess[adapter]?.allow ?? [];
     const keys = new Set<string>([
       ...allow.map((item) => item.toLowerCase()),

@@ -14,9 +14,11 @@ import {
   canWriteTenantForUser,
 } from '@/lib/team-tenant-access';
 import { DEFAULT_PWA_CONFIG, normalizePwaConfig } from '@/lib/tenant-pwa-config';
+import { normalizeBoundedInteger, normalizeTenantHostname } from '@/lib/tenant-config-validation';
 
 const DEFAULT_RESOURCE_CONFIG = { memory: 512, timeout: 5000 };
 const DEFAULT_AUTH_DB_CONFIG = { mode: 'shared' as const, secretKey: null as string | null };
+const DEFAULT_BRANDING_CONFIG = { title: '', faviconUrl: '', appleTouchIconUrl: '' };
 const DEFAULT_SSO_SECRET_KEYS = {
   clientId: 'auth:sso:client_id',
   clientSecret: 'auth:sso:client_secret',
@@ -171,25 +173,10 @@ const getTenantId = (req: NextApiRequest) => {
   return id;
 };
 
-const normalizeHostname = (raw: unknown) => {
-  if (typeof raw !== 'string' || !raw.trim()) {
-    const err = new Error('hostname is required');
-    (err as any).statusCode = 400;
-    throw err;
-  }
-  return raw.trim();
-};
+const normalizeHostname = (raw: unknown) => normalizeTenantHostname(raw);
 
-const normalizeNumber = (raw: unknown, label: string, fallback: number) => {
-  if (raw === undefined || raw === null || raw === '') return fallback;
-  const value = typeof raw === 'number' ? raw : Number(raw);
-  if (!Number.isFinite(value) || value <= 0) {
-    const err = new Error(`${label} must be a positive number`);
-    (err as any).statusCode = 400;
-    throw err;
-  }
-  return value;
-};
+const normalizeNumber = (raw: unknown, label: string, fallback: number) =>
+  normalizeBoundedInteger(raw, label, fallback, label.includes('memory') ? 64 : 100, label.includes('memory') ? 262144 : 300000);
 
 const normalizeResourceConfig = (
   raw: unknown,
@@ -247,6 +234,56 @@ const normalizeAuthDbConfig = (
     mode: modeRaw,
     secretKey: modeRaw === 'shared' ? null : secretKey,
   } as { mode: 'shared' | 'dedicated'; secretKey?: string | null };
+};
+
+const normalizeBrandingConfig = (
+  raw: unknown,
+  fallback: { title?: string; faviconUrl?: string; appleTouchIconUrl?: string } = DEFAULT_BRANDING_CONFIG
+) => {
+  if (raw === undefined || raw === null) return fallback;
+  if (typeof raw !== 'object' || Array.isArray(raw)) {
+    const err = new Error('brandingConfig must be an object');
+    (err as any).statusCode = 400;
+    throw err;
+  }
+  const values = raw as Record<string, unknown>;
+  return {
+    title: typeof values.title === 'string' ? values.title.trim() : fallback.title || '',
+    faviconUrl:
+      typeof values.faviconUrl === 'string' ? values.faviconUrl.trim() : fallback.faviconUrl || '',
+    appleTouchIconUrl:
+      typeof values.appleTouchIconUrl === 'string'
+        ? values.appleTouchIconUrl.trim()
+        : fallback.appleTouchIconUrl || '',
+  };
+};
+
+const readLegacyBrandingConfig = (rawAdapterConfig: unknown) => {
+  const adapterConfig = asObject(rawAdapterConfig);
+  const settings = asObject(adapterConfig.settings);
+  const settingsBranding = asObject(settings.branding);
+  const rootBranding = asObject(adapterConfig.branding);
+
+  return {
+    title:
+      typeof rootBranding.title === 'string'
+        ? rootBranding.title
+        : typeof settingsBranding.title === 'string'
+          ? settingsBranding.title
+          : '',
+    faviconUrl:
+      typeof rootBranding.faviconUrl === 'string'
+        ? rootBranding.faviconUrl
+        : typeof settingsBranding.faviconUrl === 'string'
+          ? settingsBranding.faviconUrl
+          : '',
+    appleTouchIconUrl:
+      typeof rootBranding.appleTouchIconUrl === 'string'
+        ? rootBranding.appleTouchIconUrl
+        : typeof settingsBranding.appleTouchIconUrl === 'string'
+          ? settingsBranding.appleTouchIconUrl
+          : '',
+  };
 };
 
 const parseAdapterConfigObject = (raw: unknown): Record<string, unknown> | null => {
@@ -340,9 +377,13 @@ const serializeTenant = (tenant: Tenant, canWrite: boolean) => ({
   allowRegistration: tenant.allowRegistration ?? true,
   resourceConfig: tenant.resourceConfig,
   adapterAccess: tenant.adapterAccess ?? {},
-  adapterConfig: tenant.adapterConfig ?? {},
+  adapterConfig: canonicalizeAdapterConfig(tenant.adapterConfig ?? {}),
   authDbConfig: tenant.authDbConfig ?? DEFAULT_AUTH_DB_CONFIG,
   pwaConfig: normalizePwaConfig(tenant.pwaConfig, DEFAULT_PWA_CONFIG),
+  brandingConfig: normalizeBrandingConfig(
+    (tenant as any).brandingConfig,
+    readLegacyBrandingConfig(tenant.adapterConfig ?? {})
+  ),
   ssoEnabled: readTenantSsoEnabled(tenant.adapterConfig ?? {}),
   canWrite,
   createdAt: tenant.createdAt,
@@ -404,7 +445,15 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
     );
     const nextPwaConfig = normalizePwaConfig(
       req.body?.pwaConfig,
-      normalizePwaConfig(tenant.pwaConfig, DEFAULT_PWA_CONFIG)
+      normalizePwaConfig(tenant.pwaConfig, DEFAULT_PWA_CONFIG),
+      { strict: true }
+    );
+    const nextBrandingConfig = normalizeBrandingConfig(
+      req.body?.brandingConfig,
+      normalizeBrandingConfig(
+        (tenant as any).brandingConfig,
+        readLegacyBrandingConfig(tenant.adapterConfig ?? {})
+      )
     );
     const configObject = parseAdapterConfigObject(req.body?.adapterConfig);
     const baseAdapterConfig = deepClone<Record<string, unknown>>(
@@ -522,6 +571,7 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
     tenant.resourceConfig = nextResourceConfig;
     tenant.authDbConfig = nextAuthDbConfig;
     tenant.pwaConfig = nextPwaConfig;
+    (tenant as any).brandingConfig = nextBrandingConfig;
     tenant.adapterAccess = nextAdapterAccess;
     tenant.adapterConfig = normalizedAdapterConfig;
     await repo.save(tenant);
