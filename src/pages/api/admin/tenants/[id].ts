@@ -13,6 +13,7 @@ import {
   assertTenantWritableForUser,
   canWriteTenantForUser,
 } from '@/lib/team-tenant-access';
+import { DEFAULT_PWA_CONFIG, normalizePwaConfig } from '@/lib/tenant-pwa-config';
 
 const DEFAULT_RESOURCE_CONFIG = { memory: 512, timeout: 5000 };
 const DEFAULT_AUTH_DB_CONFIG = { mode: 'shared' as const, secretKey: null as string | null };
@@ -341,6 +342,7 @@ const serializeTenant = (tenant: Tenant, canWrite: boolean) => ({
   adapterAccess: tenant.adapterAccess ?? {},
   adapterConfig: tenant.adapterConfig ?? {},
   authDbConfig: tenant.authDbConfig ?? DEFAULT_AUTH_DB_CONFIG,
+  pwaConfig: normalizePwaConfig(tenant.pwaConfig, DEFAULT_PWA_CONFIG),
   ssoEnabled: readTenantSsoEnabled(tenant.adapterConfig ?? {}),
   canWrite,
   createdAt: tenant.createdAt,
@@ -399,6 +401,10 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
     const nextResourceConfig = normalizeResourceConfig(
       req.body?.resourceConfig,
       tenant.resourceConfig ?? DEFAULT_RESOURCE_CONFIG
+    );
+    const nextPwaConfig = normalizePwaConfig(
+      req.body?.pwaConfig,
+      normalizePwaConfig(tenant.pwaConfig, DEFAULT_PWA_CONFIG)
     );
     const configObject = parseAdapterConfigObject(req.body?.adapterConfig);
     const baseAdapterConfig = deepClone<Record<string, unknown>>(
@@ -515,6 +521,7 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
     tenant.allowRegistration = nextAllowRegistration;
     tenant.resourceConfig = nextResourceConfig;
     tenant.authDbConfig = nextAuthDbConfig;
+    tenant.pwaConfig = nextPwaConfig;
     tenant.adapterAccess = nextAdapterAccess;
     tenant.adapterConfig = normalizedAdapterConfig;
     await repo.save(tenant);

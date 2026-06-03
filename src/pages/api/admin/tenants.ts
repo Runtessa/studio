@@ -9,6 +9,7 @@ import { encryptSecret } from '@/lib/crypto';
 import { canonicalizeAdapterConfig, parseAdapterConfig } from '@/lib/tenant-adapter-config';
 import { canWriteTenantForUser, getTenantScopeForUser } from '@/lib/team-tenant-access';
 import { seedTenantStarterProject } from '@/lib/tenantStarterProject';
+import { DEFAULT_PWA_CONFIG, normalizePwaConfig } from '@/lib/tenant-pwa-config';
 
 const DEFAULT_RESOURCE_CONFIG = { memory: 512, timeout: 5000 };
 const DEFAULT_AUTH_DB_CONFIG = { mode: 'shared' as const, secretKey: null as string | null };
@@ -125,6 +126,7 @@ const serializeTenant = (tenant: Tenant, canWrite: boolean) => ({
   adapterAccess: tenant.adapterAccess ?? {},
   adapterConfig: tenant.adapterConfig ?? {},
   authDbConfig: tenant.authDbConfig ?? DEFAULT_AUTH_DB_CONFIG,
+  pwaConfig: normalizePwaConfig(tenant.pwaConfig, DEFAULT_PWA_CONFIG),
   canWrite,
   createdAt: tenant.createdAt,
   updatedAt: tenant.updatedAt,
@@ -191,6 +193,7 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
     const allowRegistration = normalizeBoolean(req.body?.allowRegistration, true);
     const resourceConfig = normalizeResourceConfig(req.body?.resourceConfig, DEFAULT_RESOURCE_CONFIG);
     const authDbConfig = normalizeAuthDbConfig(req.body?.authDbConfig, DEFAULT_AUTH_DB_CONFIG);
+    const pwaConfig = normalizePwaConfig(req.body?.pwaConfig, DEFAULT_PWA_CONFIG);
     const configObject = parseAdapterConfigObject(req.body?.adapterConfig);
     const adapterConfig = parseAdapterConfig(configObject);
     const normalizedAdapterConfig = canonicalizeAdapterConfig(configObject);
@@ -212,6 +215,7 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
         allowRegistration,
         resourceConfig,
         authDbConfig,
+        pwaConfig,
         adapterAccess,
         adapterConfig: normalizedAdapterConfig,
       });

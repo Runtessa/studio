@@ -14,6 +14,8 @@ import { useSessionToken } from '@/lib/client/session';
 import { hasPermissionFromUser } from '@/lib/client/access';
 import { getSelectedTenantHost, setSelectedTenantHost } from '@/lib/client/tenant';
 import { buildAdapterConfigTemplate, DEFAULT_ADAPTER_CONFIG_TEMPLATE } from '@/lib/tenant-adapter-config';
+import { TenantPwaFields } from '@/components/admin/tenants/TenantPwaFields';
+import type { TenantPwaFormState } from '@/components/admin/tenants/types';
 
 const MonacoEditor = dynamic(() => import('@monaco-editor/react'), { ssr: false });
 
@@ -27,6 +29,7 @@ type TenantSummary = {
   adapterAccess?: Record<string, { allow: string[] }>;
   adapterConfig?: Record<string, unknown>;
   authDbConfig?: { mode?: 'shared' | 'dedicated'; secretKey?: string | null };
+  pwaConfig?: Partial<TenantPwaFormState>;
   createdAt?: string;
   updatedAt?: string;
 };
@@ -47,6 +50,7 @@ type TenantEditState = {
   timeout: string;
   authDbMode: 'shared' | 'dedicated';
   authDbSecretKey: string;
+  pwa: TenantPwaFormState;
 };
 
 type TenantFormErrors = {
@@ -67,6 +71,15 @@ const DEFAULT_FORM: TenantEditState = {
   timeout: '5000',
   authDbMode: 'shared',
   authDbSecretKey: '',
+  pwa: {
+    enabled: false,
+    name: '',
+    shortName: '',
+    themeColor: '#121212',
+    backgroundColor: '#121212',
+    startUrl: '/',
+    scope: '/',
+  },
 };
 
 const DEFAULT_CONFIG_TEXT = DEFAULT_ADAPTER_CONFIG_TEMPLATE;
@@ -167,6 +180,15 @@ export default function AdminTenantEditPage() {
               ? 'dedicated'
               : 'shared',
           authDbSecretKey: tenant.authDbConfig?.secretKey ?? '',
+          pwa: {
+            enabled: tenant.pwaConfig?.enabled === true,
+            name: tenant.pwaConfig?.name ?? '',
+            shortName: tenant.pwaConfig?.shortName ?? '',
+            themeColor: tenant.pwaConfig?.themeColor ?? '#121212',
+            backgroundColor: tenant.pwaConfig?.backgroundColor ?? '#121212',
+            startUrl: tenant.pwaConfig?.startUrl ?? '/',
+            scope: tenant.pwaConfig?.scope ?? '/',
+          },
         });
         const access = tenant.adapterAccess ?? {};
         const storedConfig = tenant.adapterConfig ?? {};
@@ -207,6 +229,15 @@ export default function AdminTenantEditPage() {
       secretKey: values.authDbMode === 'dedicated' ? values.authDbSecretKey.trim() : null,
     },
     adapterConfig: configText ? parseConfigJson(configText) : undefined,
+    pwaConfig: {
+      enabled: values.pwa.enabled,
+      name: values.pwa.name.trim() || undefined,
+      shortName: values.pwa.shortName.trim() || undefined,
+      themeColor: values.pwa.themeColor.trim() || '#121212',
+      backgroundColor: values.pwa.backgroundColor.trim() || '#121212',
+      startUrl: values.pwa.startUrl.trim() || '/',
+      scope: values.pwa.scope.trim() || '/',
+    },
   });
 
   const handleSubmit = async (e: FormEvent) => {
@@ -381,6 +412,7 @@ export default function AdminTenantEditPage() {
               error={validationErrors.authDbSecretKey}
               disabled={form.authDbMode !== 'dedicated'}
             />
+            <TenantPwaFields value={form.pwa} onChange={(pwa) => setForm({ ...form, pwa })} />
             <div className="md:col-span-2 space-y-2">
               <div className="flex items-center justify-between">
                 <label className="text-sm font-medium text-textPrimary">Adapter config (JSON)</label>

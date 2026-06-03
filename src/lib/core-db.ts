@@ -126,6 +126,8 @@ export const ensureCoreSchema = async () => {
         const hasAclRoles = hasTenantTable && (await queryRunner.hasColumn('tenants', 'aclRoles'));
         const hasAclEndpoints =
           hasTenantTable && (await queryRunner.hasColumn('tenants', 'aclEndpoints'));
+        const hasPwaConfig =
+          hasTenantTable && (await queryRunner.hasColumn('tenants', 'pwaConfig'));
         const hasOrmModels = await queryRunner.hasTable('orm_models');
         const hasModulesTable = await queryRunner.hasTable('modules');
         const hasModuleSourceCodeId =
@@ -159,6 +161,7 @@ export const ensureCoreSchema = async () => {
           !hasAclPermissions ||
           !hasAclRoles ||
           !hasAclEndpoints ||
+          !hasPwaConfig ||
           !hasOrmModels ||
           !hasModulesTable ||
           !hasModuleSourceCodeId ||
