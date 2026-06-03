@@ -19,9 +19,14 @@ export function TenantPwaManifestEditor({
   onChange,
 }: TenantPwaManifestEditorProps) {
   return (
-    <div className="space-y-1">
+    <div className="space-y-3 rounded-2xl border border-borderSubtle bg-bgApp p-5">
       <div className="flex items-center justify-between">
-        <label className="text-sm font-medium text-textPrimary">Manifest JSON</label>
+        <div>
+          <label className="text-sm font-medium text-textPrimary">Manifest JSON</label>
+          <p className="mt-1 text-xs text-textMuted">
+            Advanced control for fields like `icons`, `description`, or a custom display mode.
+          </p>
+        </div>
         <Button type="button" variant="secondary" size="xs" onClick={onToggleExpanded}>
           {expanded ? 'Collapse' : 'Expand'}
         </Button>
@@ -46,9 +51,6 @@ export function TenantPwaManifestEditor({
         />
       </div>
       {error ? <p className="text-xs text-danger">{error}</p> : null}
-      <p className="text-xs text-textMuted">
-        Edit the generated `manifest.json` directly when you need fields like `icons`, `description`, or a different display mode.
-      </p>
     </div>
   );
 }

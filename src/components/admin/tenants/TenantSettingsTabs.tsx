@@ -1,11 +1,14 @@
-type TenantSettingsTabId = 'tenant' | 'branding' | 'pwa' | 'adapters';
+import { AdminPillTabs, type AdminPillTabItem } from '@/components/admin/AdminPillTabs';
+
+export type TenantSettingsTabId = 'tenant' | 'branding' | 'pwa' | 'adapters' | 'secrets';
 
 type TenantSettingsTabsProps = {
   activeTab: TenantSettingsTabId;
-  onChange: (tab: TenantSettingsTabId) => void;
+  onChange?: (tab: TenantSettingsTabId) => void;
+  tenantId?: string;
 };
 
-const TABS: Array<{ id: TenantSettingsTabId; label: string }> = [
+const TABS: Array<{ id: Exclude<TenantSettingsTabId, 'secrets'>; label: string }> = [
   {
     id: 'tenant',
     label: 'Tenant configuration',
@@ -24,30 +27,21 @@ const TABS: Array<{ id: TenantSettingsTabId; label: string }> = [
   },
 ];
 
-export function TenantSettingsTabs({ activeTab, onChange }: TenantSettingsTabsProps) {
-  return (
-    <div className="rounded-xl border border-borderSubtle bg-bgSurface p-2">
-      <nav className="flex flex-wrap gap-2">
-        {TABS.map((tab) => {
-          const active = tab.id === activeTab;
-          return (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => onChange(tab.id)}
-              className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition ${
-                active
-                  ? 'border-primary bg-primaryDark text-textPrimary'
-                  : 'border-borderSubtle text-textMuted hover:bg-bgApp hover:text-textPrimary'
-              }`}
-            >
-              {tab.label}
-            </button>
-          );
-        })}
-      </nav>
-    </div>
-  );
+export function TenantSettingsTabs({ activeTab, onChange, tenantId }: TenantSettingsTabsProps) {
+  const items: AdminPillTabItem<TenantSettingsTabId>[] = TABS.map((tab) => ({
+    ...tab,
+    href: tenantId ? `/admin/tenants/${tenantId}?tab=${tab.id}` : undefined,
+  }));
+
+  if (tenantId) {
+    items.push({
+      id: 'secrets',
+      label: 'Manage secrets',
+      href: `/admin/tenants/${tenantId}?tab=secrets`,
+    });
+  }
+
+  return <AdminPillTabs activeTab={activeTab} items={items} onChange={onChange} />;
 }
 
 export default TenantSettingsTabs;

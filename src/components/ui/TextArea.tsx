@@ -3,10 +3,11 @@ import React, { forwardRef, useId } from 'react';
 export interface TextAreaProps extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {
   label?: string;
   error?: string;
+  helperText?: string;
 }
 
 export const TextArea = forwardRef<HTMLTextAreaElement, TextAreaProps>(
-  ({ label, error, className = '', id, ...props }, ref) => {
+  ({ label, error, helperText, className = '', id, ...props }, ref) => {
     const generatedId = useId();
     const textareaId = id || generatedId;
 
@@ -27,6 +28,7 @@ export const TextArea = forwardRef<HTMLTextAreaElement, TextAreaProps>(
           className={`${baseStyles} ${error ? errorBorder : defaultBorder} ${className}`}
           {...props}
         />
+        {helperText && !error && <p className="text-xs text-textMuted mt-1">{helperText}</p>}
         {error && <p className="text-xs text-danger mt-1">{error}</p>}
       </div>
     );

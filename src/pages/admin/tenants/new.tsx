@@ -1,20 +1,21 @@
 import { FormEvent, useEffect, useState } from 'react';
-import dynamic from 'next/dynamic';
 import { useRouter } from 'next/router';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { DataCard } from '@/components/ui/DataCard';
-import { FormLayout } from '@/components/ui/FormLayout';
 import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
 import { useToast } from '@/components/ui/Toast';
 import { fetchJson } from '@/lib/client/api';
 import { useSessionToken } from '@/lib/client/session';
 import { hasPermissionFromUser } from '@/lib/client/access';
+import { TenantAdapterConfigEditor } from '@/components/admin/tenants/TenantAdapterConfigEditor';
+import { TenantCoreSettingsForm } from '@/components/admin/tenants/TenantCoreSettingsForm';
 import { DEFAULT_ADAPTER_CONFIG_TEMPLATE } from '@/lib/tenant-adapter-config';
 import { TenantBrandingForm, type TenantBrandingFormState } from '@/components/admin/tenants/TenantBrandingForm';
 import { TenantPwaManifestEditor } from '@/components/admin/tenants/TenantPwaManifestEditor';
 import { TenantSettingsTabs } from '@/components/admin/tenants/TenantSettingsTabs';
+import { TenantTabFormCard } from '@/components/admin/tenants/TenantTabFormCard';
 import { TenantPwaFields } from '@/components/admin/tenants/TenantPwaFields';
+import { TenantWorkspaceSummary } from '@/components/admin/tenants/TenantWorkspaceSummary';
 import type { TenantPwaFormState } from '@/components/admin/tenants/types';
 import { parseTenantPwaManifest, serializeTenantPwaManifest } from '@/lib/tenant-pwa-manifest';
 import {
@@ -24,8 +25,6 @@ import {
   validateTenantConfigForm,
   type TenantConfigFormErrors,
 } from '@/lib/tenant-config-validation';
-
-const MonacoEditor = dynamic(() => import('@monaco-editor/react'), { ssr: false });
 
 type TenantFormState = {
   hostname: string;
@@ -158,6 +157,11 @@ export default function AdminTenantCreatePage() {
     }
   };
 
+  const handleTabChange = (tab: 'tenant' | 'branding' | 'pwa' | 'adapters' | 'secrets') => {
+    if (tab === 'secrets') return;
+    setActiveTab(tab);
+  };
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError('');
@@ -220,200 +224,119 @@ export default function AdminTenantCreatePage() {
         </div>
       )}
 
-      <TenantSettingsTabs activeTab={activeTab} onChange={setActiveTab} />
+      <TenantWorkspaceSummary
+        hostname={form.hostname}
+        mode="create"
+        isSuspended={form.isSuspended}
+        allowRegistration={form.allowRegistration}
+        authDbMode={form.authDbMode}
+        pwaEnabled={form.pwa.enabled}
+      />
+
+      <TenantSettingsTabs activeTab={activeTab} onChange={handleTabChange} />
 
       {activeTab === 'tenant' ? (
-        <DataCard title="Tenant configuration" subtitle="Fill the core tenant settings and create the tenant.">
-          <FormLayout
-            onSubmit={handleSubmit}
-            actions={
-              <>
-                <Button variant="secondary" href="/admin/tenants">
-                  Cancel
-                </Button>
-                <Button type="submit" variant="primary">
-                  Create tenant
-                </Button>
-              </>
-            }
-            gridClassName="grid gap-5 md:grid-cols-2"
-          >
-            <div className="md:col-span-2">
-              <Input
-                label="Hostname"
-                placeholder="tenant.example.com"
-                value={form.hostname}
-                onChange={(e) => setForm({ ...form, hostname: e.target.value })}
-                error={validationErrors.hostname}
-              />
-            </div>
-            <label className="flex items-center gap-2 pt-6 text-sm text-textPrimary">
-              <input
-                type="checkbox"
-                checked={form.isSuspended}
-                onChange={(e) => setForm({ ...form, isSuspended: e.target.checked })}
-                className="h-4 w-4 rounded border-borderSubtle text-accent focus:ring-accent/30"
-              />
-              Suspended
-            </label>
-            <label className="flex items-center gap-2 pt-6 text-sm text-textPrimary">
-              <input
-                type="checkbox"
-                checked={form.allowRegistration}
-                onChange={(e) => setForm({ ...form, allowRegistration: e.target.checked })}
-                className="h-4 w-4 rounded border-borderSubtle text-accent focus:ring-accent/30"
-              />
-              Allow registration
-            </label>
-            <Input
-              label="Memory (MB)"
-              type="number"
-              min="1"
-              step="64"
-              value={form.memory}
-              onChange={(e) => setForm({ ...form, memory: e.target.value })}
-              error={validationErrors.memory}
-            />
-            <Input
-              label="Timeout (ms)"
-              type="number"
-              min="1"
-              step="100"
-              value={form.timeout}
-              onChange={(e) => setForm({ ...form, timeout: e.target.value })}
-              error={validationErrors.timeout}
-            />
-            <div>
-              <label className="mb-1 block text-sm font-medium text-textPrimary">Auth DB mode</label>
-              <select
-                value={form.authDbMode}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    authDbMode: e.target.value === 'dedicated' ? 'dedicated' : 'shared',
-                  })
-                }
-                className="w-full rounded-md border border-borderSubtle bg-bgSurface px-3 py-2 text-sm text-textPrimary focus:border-accent focus:outline-none"
-              >
-                <option value="shared">Shared (use global USER_DB_*)</option>
-                <option value="dedicated">Dedicated (use tenant secret key)</option>
-              </select>
-            </div>
-            <Input
-              label="Auth DB secret key"
-              placeholder="userdb:tenant-a"
-              value={form.authDbSecretKey}
-              onChange={(e) => setForm({ ...form, authDbSecretKey: e.target.value })}
-              error={validationErrors.authDbSecretKey}
-              disabled={form.authDbMode !== 'dedicated'}
-            />
-          </FormLayout>
-        </DataCard>
+        <TenantTabFormCard
+          title="Tenant configuration"
+          subtitle="Core tenant identity, access posture, runtime limits, and auth storage."
+          onSubmit={handleSubmit}
+          actions={
+            <>
+              <Button variant="secondary" href="/admin/tenants">
+                Cancel
+              </Button>
+              <Button type="submit" variant="primary">
+                Create tenant
+              </Button>
+            </>
+          }
+        >
+          <TenantCoreSettingsForm
+            value={form}
+            errors={{
+              hostname: validationErrors.hostname,
+              memory: validationErrors.memory,
+              timeout: validationErrors.timeout,
+              authDbSecretKey: validationErrors.authDbSecretKey,
+            }}
+            onChange={(next) => setForm((current) => ({ ...current, ...next }))}
+          />
+        </TenantTabFormCard>
       ) : activeTab === 'branding' ? (
-        <DataCard title="Branding" subtitle="Configure the tenant title and browser icons separately from adapter config.">
-          <FormLayout
-            onSubmit={handleSubmit}
-            actions={
-              <>
-                <Button variant="secondary" href="/admin/tenants">
-                  Cancel
-                </Button>
-                <Button type="submit" variant="primary">
-                  Create tenant
-                </Button>
-              </>
-            }
-          >
-            <TenantBrandingForm
-              value={form.branding}
-              onChange={(branding) => setForm({ ...form, branding })}
-            />
-          </FormLayout>
-        </DataCard>
+        <TenantTabFormCard
+          title="Branding"
+          subtitle="Application name and browser icons used by the tenant shell."
+          onSubmit={handleSubmit}
+          actions={
+            <>
+              <Button variant="secondary" href="/admin/tenants">
+                Cancel
+              </Button>
+              <Button type="submit" variant="primary">
+                Create tenant
+              </Button>
+            </>
+          }
+        >
+          <TenantBrandingForm
+            value={form.branding}
+            onChange={(branding) => setForm({ ...form, branding })}
+          />
+        </TenantTabFormCard>
       ) : activeTab === 'pwa' ? (
-        <DataCard title="PWA" subtitle="Configure installable app behavior for this tenant.">
-          <FormLayout
-            onSubmit={handleSubmit}
-            actions={
-              <>
-                <Button variant="secondary" href="/admin/tenants">
-                  Cancel
-                </Button>
-                <Button type="submit" variant="primary">
-                  Create tenant
-                </Button>
-              </>
-            }
-          >
-            <TenantPwaFields
-              value={form.pwa}
-              errors={validationErrors.pwa}
-              onChange={handlePwaFormChange}
-            />
-            <TenantPwaManifestEditor
-              value={pwaManifestText}
-              error={pwaManifestError}
-              expanded={pwaEditorExpanded}
-              onToggleExpanded={() => setPwaEditorExpanded((current) => !current)}
-              onChange={handlePwaManifestChange}
-            />
-          </FormLayout>
-        </DataCard>
+        <TenantTabFormCard
+          title="PWA"
+          subtitle="Installable app behavior, manifest fields, and raw manifest JSON."
+          onSubmit={handleSubmit}
+          actions={
+            <>
+              <Button variant="secondary" href="/admin/tenants">
+                Cancel
+              </Button>
+              <Button type="submit" variant="primary">
+                Create tenant
+              </Button>
+            </>
+          }
+        >
+          <TenantPwaFields
+            value={form.pwa}
+            errors={validationErrors.pwa}
+            onChange={handlePwaFormChange}
+          />
+          <TenantPwaManifestEditor
+            value={pwaManifestText}
+            error={pwaManifestError}
+            expanded={pwaEditorExpanded}
+            onToggleExpanded={() => setPwaEditorExpanded((current) => !current)}
+            onChange={handlePwaManifestChange}
+          />
+        </TenantTabFormCard>
       ) : (
-        <DataCard title="Adapter configuration" subtitle="Configure adapter access and create the tenant with this adapter setup.">
-          <FormLayout
-            onSubmit={handleSubmit}
-            actions={
-              <>
-                <Button variant="secondary" href="/admin/tenants">
-                  Cancel
-                </Button>
-                <Button type="submit" variant="primary">
-                  Create tenant
-                </Button>
-              </>
-            }
-          >
-            <div className="space-y-1">
-              <div className="flex items-center justify-between">
-                <label className="text-sm font-medium text-textPrimary">Adapter config JSON</label>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="xs"
-                  onClick={() => setEditorExpanded((current) => !current)}
-                >
-                  {editorExpanded ? 'Collapse' : 'Expand'}
-                </Button>
-              </div>
-              <div
-                className={`overflow-hidden rounded-md border border-borderSubtle bg-bgSurface ${
-                  editorExpanded ? 'h-[70vh]' : 'h-56'
-                }`}
-              >
-                <MonacoEditor
-                  height="100%"
-                  language="json"
-                  theme="vs-dark"
-                  value={adapterConfigText}
-                  onChange={(nextValue) => setAdapterConfigText(nextValue ?? '')}
-                  options={{
-                    minimap: { enabled: false },
-                    fontSize: 12,
-                    scrollBeyondLastLine: false,
-                    wordWrap: 'on',
-                  }}
-                />
-              </div>
-              {validationErrors.adapterConfig ? (
-                <p className="text-xs text-danger">{validationErrors.adapterConfig}</p>
-              ) : null}
-              <p className="text-xs text-textMuted">
-                Use secret references such as `adapter:redis:cache:default`. Manage actual secret values from the tenant secrets page after creation.
-              </p>
-            </div>
-          </FormLayout>
-        </DataCard>
+        <TenantTabFormCard
+          title="Adapter configuration"
+          subtitle="Runtime adapter map and secret-reference wiring for this tenant."
+          onSubmit={handleSubmit}
+          actions={
+            <>
+              <Button variant="secondary" href="/admin/tenants">
+                Cancel
+              </Button>
+              <Button type="submit" variant="primary">
+                Create tenant
+              </Button>
+            </>
+          }
+        >
+          <TenantAdapterConfigEditor
+            value={adapterConfigText}
+            error={validationErrors.adapterConfig}
+            expanded={editorExpanded}
+            secrets={[]}
+            onToggleExpanded={() => setEditorExpanded((current) => !current)}
+            onChange={setAdapterConfigText}
+          />
+        </TenantTabFormCard>
       )}
     </div>
   );
