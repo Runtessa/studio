@@ -14,7 +14,10 @@ import {
   canWriteTenantForUser,
 } from '@/lib/team-tenant-access';
 import { DEFAULT_PWA_CONFIG, normalizePwaConfig } from '@/lib/tenant-pwa-config';
-import { normalizeBoundedInteger, normalizeTenantHostname } from '@/lib/tenant-config-validation';
+import {
+  normalizeBoundedInteger,
+  normalizeTenantHostname,
+} from '@/lib/tenant-config-validation';
 
 const DEFAULT_RESOURCE_CONFIG = { memory: 512, timeout: 5000 };
 const DEFAULT_AUTH_DB_CONFIG = { mode: 'shared' as const, secretKey: null as string | null };

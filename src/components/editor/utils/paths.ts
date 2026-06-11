@@ -16,6 +16,8 @@ import {
   UI_EXTENSION_OPTIONS,
 } from '@/components/editor/constants';
 
+const APP_ROUTES_UI_NAME = '@app/routes';
+
 export const detectLanguage = (fileName: string): EditorLanguage => {
   const lower = fileName.toLowerCase();
   if (lower.endsWith('.tsx')) return 'jsx';
@@ -71,6 +73,9 @@ export const formatModuleFileName = (mod: ModuleDto) =>
   `${mod.method.toLowerCase()}.module.${coerceModuleExtension(mod.fileExtension)}`;
 
 export const formatUiFileName = (pkg: UIPackageDto) => {
+  if ((pkg.name || '').trim() === APP_ROUTES_UI_NAME) {
+    return `routes.${coerceUiExtension(pkg.fileExtension || 'ts')}`;
+  }
   const nameSegments = splitUiName(pkg.name || 'ui');
   const baseName = nameSegments[nameSegments.length - 1] || 'ui';
   return `${sanitizeForFilename(baseName)}.ui.${coerceUiExtension(pkg.fileExtension)}`;

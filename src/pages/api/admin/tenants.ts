@@ -10,12 +10,14 @@ import { canonicalizeAdapterConfig, parseAdapterConfig } from '@/lib/tenant-adap
 import { canWriteTenantForUser, getTenantScopeForUser } from '@/lib/team-tenant-access';
 import { seedTenantStarterProject } from '@/lib/tenantStarterProject';
 import { DEFAULT_PWA_CONFIG, normalizePwaConfig } from '@/lib/tenant-pwa-config';
-import { normalizeBoundedInteger, normalizeTenantHostname } from '@/lib/tenant-config-validation';
+import {
+  normalizeBoundedInteger,
+  normalizeTenantHostname,
+} from '@/lib/tenant-config-validation';
 
 const DEFAULT_RESOURCE_CONFIG = { memory: 512, timeout: 5000 };
 const DEFAULT_AUTH_DB_CONFIG = { mode: 'shared' as const, secretKey: null as string | null };
 const DEFAULT_BRANDING_CONFIG = { title: '', faviconUrl: '', appleTouchIconUrl: '' };
-
 const normalizeHostname = (raw: unknown) => normalizeTenantHostname(raw);
 
 const normalizeNumber = (raw: unknown, label: string, fallback: number) =>

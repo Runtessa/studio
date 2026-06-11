@@ -15,6 +15,8 @@ import { compileUiSource } from '@/lib/assistant/compiler';
 const STARTER_MODULE_ROUTE = '/api/hello';
 const STARTER_MODULE_METHOD = HttpMethod.GET;
 const STARTER_MODEL_PATH = 'models/ExampleItem.js';
+const STARTER_ROUTES_NAME = '@app/routes';
+const STARTER_ROUTES_VERSION = '1.0.0';
 const STARTER_UI_NAME = '@app/dashboard';
 const STARTER_UI_VERSION = '1.0.0';
 
@@ -100,6 +102,21 @@ export default function App() {
 }
 `;
 
+const STARTER_ROUTES_CODE = `const routes = [
+  {
+    path: "/",
+    redirectTo: "/dashboard",
+  },
+  {
+    path: "/dashboard",
+    package: "@app/dashboard",
+    requireAuth: true,
+  },
+];
+
+export default routes;
+`;
+
 const ensureAclEndpoint = (tenant: Tenant, routePath: string) => {
   const endpoints = ((tenant.aclEndpoints ?? {}) as Record<
     string,
@@ -129,7 +146,7 @@ export const seedTenantStarterProject = async (
   const sourceRepo = manager.getRepository(SourceCode);
   const compiledRepo = manager.getRepository(CompiledCode);
 
-  const [existingModule, existingModel, existingUi] = await Promise.all([
+  const [existingModule, existingModel, existingRoutes, existingUi] = await Promise.all([
     moduleRepo.findOne({
       where: {
         tenant: { id: tenant.id },
@@ -141,6 +158,13 @@ export const seedTenantStarterProject = async (
       where: {
         tenant: { id: tenant.id },
         path: STARTER_MODEL_PATH,
+      },
+    }),
+    uiRepo.findOne({
+      where: {
+        tenant: { id: tenant.id },
+        name: STARTER_ROUTES_NAME,
+        version: STARTER_ROUTES_VERSION,
       },
     }),
     uiRepo.findOne({
@@ -197,6 +221,25 @@ export const seedTenantStarterProject = async (
       compiledCode,
       dependencies: [],
       fileExtension: 'jsx',
+      draftVersion: generateVersion(),
+    });
+    await uiRepo.save(pkg);
+  }
+
+  if (!existingRoutes) {
+    const sourceCode = sourceRepo.create({ code: STARTER_ROUTES_CODE });
+    const codeBlob = compileUiSource(STARTER_ROUTES_CODE, 'ts');
+    const compiledCode = compiledRepo.create({ code: codeBlob });
+    await sourceRepo.save(sourceCode);
+    await compiledRepo.save(compiledCode);
+    const pkg = uiRepo.create({
+      tenant,
+      name: STARTER_ROUTES_NAME,
+      version: STARTER_ROUTES_VERSION,
+      sourceCode,
+      compiledCode,
+      dependencies: [],
+      fileExtension: 'ts',
       draftVersion: generateVersion(),
     });
     await uiRepo.save(pkg);

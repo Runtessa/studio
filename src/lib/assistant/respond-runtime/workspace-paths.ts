@@ -12,6 +12,8 @@ export const splitUiSegments = (name: string) =>
     .map((segment) => segment.trim())
     .filter(Boolean);
 
+const APP_ROUTES_UI_NAME = '@app/routes';
+
 export const sanitizeForFilename = (value: string) =>
   String(value || '')
     .trim()
@@ -50,6 +52,9 @@ export const toUiVirtualPath = (pkg: {
   fileExtension?: string | null;
 }) => {
   const ext = (pkg.fileExtension || 'jsx').replace(/^\./, '').toLowerCase() || 'jsx';
+  if (String(pkg.name || '').trim() === APP_ROUTES_UI_NAME) {
+    return `ui/routes.${ext || 'ts'}`;
+  }
   const nameSegments = splitUiSegments(pkg.name || 'ui');
   const folders = nameSegments.slice(0, -1);
   const base = nameSegments[nameSegments.length - 1] || 'ui';

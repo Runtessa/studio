@@ -123,6 +123,7 @@ export function TenantCoreSettingsForm({
             />
           </div>
         </Section>
+
       </div>
 
       <div className="space-y-5">
