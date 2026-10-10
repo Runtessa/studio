@@ -1,6 +1,6 @@
 import { install, mapSourcePosition } from "source-map-support";
 import { AppDataSource, ensureSchema } from "./db";
-import { SystemLog } from '@idp/shared';
+import { SystemLog, safeErrorMeta, safeLogMetadata, safeLogPath } from '@idp/shared';
 
 const globalAny = globalThis as typeof globalThis & { __WBOT_LOGGER_INIT?: boolean };
 
@@ -46,50 +46,27 @@ export const insertLog = async ({ level, source, action, message, meta }: LogEnt
     const log = repo.create({
       level,
       source,
-      action: action || null,
+      action: action ? (/^(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS) /.test(action)
+        ? action.split(' ')[0] + ' ' + safeLogPath(action.slice(action.indexOf(' ') + 1)) : action) : null,
       message: message || null,
-      meta: meta || null,
+      meta: meta ? safeLogMetadata(meta) : null,
     });
     await repo.save(log);
-  } catch (err) {
+  } catch {
     // Logging failures must never crash the app
-    console.error("Failed to insert log", err);
+    console.error("Failed to insert log");
   }
 };
 
 export const toErrorMeta = (err: any): ErrorMeta | null => {
-  if (!err) return null;
-  const stack = typeof err.stack === "string" ? err.stack : undefined;
-  const frames: ErrorFrame[] = [];
-
-  if (stack) {
-    const lines = stack.split("\n");
-    for (const line of lines) {
-      const match = line.match(/^\s*at\s+(.*?)\s+\(?(.+):(\d+):(\d+)\)?$/);
-      if (!match) continue;
-
-      const [, rawMethod, filePath, lineStr, colStr] = match;
-      const mapped = mapSourcePosition({
-        source: filePath,
-        line: Number(lineStr),
-        column: Number(colStr),
-      });
-
-      frames.push({
-        file: mapped.source || filePath,
-        line: mapped.line || Number(lineStr),
-        column: mapped.column || Number(colStr),
-        method: rawMethod && rawMethod !== "Object.<anonymous>" ? rawMethod : undefined,
-      });
-    }
-  }
-
-  return {
-    name: err.name || "Error",
-    message: err.message || String(err),
-    stack,
-    frames,
-  };
+  const details = safeErrorMeta(err);
+  if (!details) return null;
+  return { ...details, frames: details.frames.map((frame) => {
+    try {
+      const mapped = mapSourcePosition({ source: frame.file, line: frame.line, column: frame.column });
+      return { ...frame, file: mapped.source || frame.file, line: mapped.line || frame.line, column: mapped.column || frame.column };
+    } catch { return frame; }
+  }) };
 };
 
 const baseLog =

@@ -2,6 +2,7 @@ import { transformSync } from '@babel/core';
 import presetEnv from '@babel/preset-env';
 import presetReact from '@babel/preset-react';
 import presetTypescript from '@babel/preset-typescript';
+import { safeErrorMeta } from '@idp/shared';
 
 const normalizeExtension = (value?: string | null) => {
   if (!value) return '';
@@ -24,7 +25,7 @@ export const compileUiSource = (code: string, extension?: string | null) => {
     });
     return result?.code ?? code;
   } catch (err) {
-    console.error('Assistant Babel compile failed:', err);
+    console.error('Assistant Babel compile failed:', safeErrorMeta(err));
     return code;
   }
 };

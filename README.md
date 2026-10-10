@@ -51,6 +51,20 @@ repository/authentication doubles. They do not replace a live database, HTTP,
 concurrency, or penetration test. Run them along with the type check and production
 build when changing authorization.
 
+## Request diagnostics
+
+Failed API requests record status, method, pathname, error class and source frames.
+Request bodies, query values, URL credentials/fragments, exception messages and raw
+stacks are omitted. Structured metadata masks credential fields and raw payload
+containers. Logging storage failures emit a fixed message without the rejected
+database query or parameters. Auth and Core use safe exception summaries; Core SQL
+diagnostics record event type and timing without SQL text or bound values.
+
+Run `npm run test:logging` from the repository root. Tests exercise the real logger,
+API wrappers, bootstrap, error handler and database logger with synthetic secrets
+and dependency doubles. Existing database and platform logs are not rewritten by
+these changes. Avoid adding free-form request content to log messages or metadata.
+
 ## Existing encryption keys
 
 `CORE_ENCRYPTION_KEY` protects rows in `secrets` and encrypted `enc:` values in tenant
