@@ -1,6 +1,7 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import { withApiHandler } from '@/lib/api-helpers';
 import { requireAdmin } from '@/lib/auth';
+import { assertTenantReadableForUser } from '@/lib/team-tenant-access';
 import { CoreDataSource, ensureCoreSchema } from '@/lib/core-db';
 import { PublishRequest, PublishRequestStatus } from '@idp/shared';
 import { ensureCoreUserIdentity } from '@/lib/core-users';
@@ -14,12 +15,6 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
 
   const user = await requireAdmin(req);
   await ensureCoreSchema();
-  const coreUser = await ensureCoreUserIdentity({
-    id: user.id,
-    email: user.email,
-    role: user.role,
-    token: user.token ?? null,
-  });
 
   const repo = CoreDataSource.getRepository(PublishRequest);
   const request = await repo.findOne({
@@ -31,6 +26,8 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
     res.status(404).json({ error: 'Publish request not found' });
     return;
   }
+
+  await assertTenantReadableForUser(user, request.tenant.id);
 
   if (request.tenant.isSuspended) {
     res.status(403).json({ error: 'Tenant is suspended' });
@@ -47,6 +44,13 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
     res.status(400).json({ error: 'Rejection note is required' });
     return;
   }
+
+  const coreUser = await ensureCoreUserIdentity({
+    id: user.id,
+    email: user.email,
+    role: user.role,
+    token: user.token ?? null,
+  });
 
   request.status = PublishRequestStatus.REJECTED;
   request.approver = { id: coreUser.id } as any;

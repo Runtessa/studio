@@ -79,7 +79,7 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
   }
 
   const user = await requireUser(req);
-  const tenant = await resolveTenant(req);
+  const tenant = await resolveTenant(req, user, 'ide.ui.write');
   const repo = CoreDataSource.getRepository(UIPackage);
   const pkg = await repo.findOne({
     where: { id: req.query.id as string, tenant: { id: tenant.id } },

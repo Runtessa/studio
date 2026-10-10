@@ -60,8 +60,8 @@ const serialize = (model: OrmModel) => ({
 
 export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) => {
   if (req.method === 'GET') {
-    await requireUser(req);
-    const tenant = await resolveTenant(req);
+    const user = await requireUser(req);
+    const tenant = await resolveTenant(req, user, 'ide.models.read');
     const repo = CoreDataSource.getRepository(OrmModel);
     const models = await repo.find({
       where: { tenant: { id: tenant.id } },
@@ -73,8 +73,8 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
   }
 
   if (req.method === 'POST') {
-    await requireUser(req);
-    const tenant = await resolveTenant(req);
+    const user = await requireUser(req);
+    const tenant = await resolveTenant(req, user, 'ide.models.write');
     const { path, code } = req.body ?? {};
     const normalizedPath = normalizePath(path);
     const normalizedCode = normalizeCode(code);

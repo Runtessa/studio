@@ -2,7 +2,7 @@ import { TeamTenant } from '@idp/shared';
 import { AppDataSource, ensureSchema } from './db';
 import { type IdePermission } from './rbac';
 
-type ScopedUser = {
+export type ScopedUser = {
   isAdmin?: boolean;
   role?: string;
   normalizedRole?: string;

@@ -1,6 +1,9 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import { withApiHandler } from '@/lib/api-helpers';
 import { requireAdmin } from '@/lib/auth';
+import { assertTenantReadableForUser } from '@/lib/team-tenant-access';
+import { assertPublishRequestItems } from '@/lib/publish-request-access';
+import { claimSharedProjectOwnershipIfNeeded, ensureSharedProjectPublishable } from '@/lib/shared-project-access';
 import { CoreDataSource, ensureCoreSchema } from '@/lib/core-db';
 import {
   PublishRequest,
@@ -31,12 +34,6 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
 
   const user = await requireAdmin(req);
   await ensureCoreSchema();
-  const coreUser = await ensureCoreUserIdentity({
-    id: user.id,
-    email: user.email,
-    role: user.role,
-    token: user.token ?? null,
-  });
 
   const repo = CoreDataSource.getRepository(PublishRequest);
   const request = await repo.findOne({
@@ -49,6 +46,8 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
     return;
   }
 
+  await assertTenantReadableForUser(user, request.tenant.id);
+
   const tenant = request.tenant;
   if (tenant.isSuspended) {
     res.status(403).json({ error: 'Tenant is suspended' });
@@ -59,6 +58,15 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
     res.status(400).json({ error: 'Only pending requests can be approved' });
     return;
   }
+
+  await assertPublishRequestItems(user, request.items);
+
+  const coreUser = await ensureCoreUserIdentity({
+    id: user.id,
+    email: user.email,
+    role: user.role,
+    token: user.token ?? null,
+  });
 
   // Perform actual publishing for each item
   for (const item of request.items) {
@@ -117,6 +125,8 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
         const sharedRepo = CoreDataSource.getRepository(GlobalModulePackage);
         const pkg = await sharedRepo.findOne({ where: { id: item.id } });
         if (pkg) {
+          const access = ensureSharedProjectPublishable(user, pkg);
+          claimSharedProjectOwnershipIfNeeded(pkg, access);
           const publishedSource = sourceRepo.create({ code: item.data.code ?? '' });
           await sourceRepo.save(publishedSource);
 
@@ -138,6 +148,8 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
         const sharedUiRepo = CoreDataSource.getRepository(GlobalUIPackage);
         const pkg = await sharedUiRepo.findOne({ where: { id: item.id } });
         if (pkg) {
+          const access = ensureSharedProjectPublishable(user, pkg);
+          claimSharedProjectOwnershipIfNeeded(pkg, access);
           const publishedSource = sourceRepo.create({ code: item.data.code ?? '' });
           await sourceRepo.save(publishedSource);
 

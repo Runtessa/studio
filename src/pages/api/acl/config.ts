@@ -67,8 +67,8 @@ const validateEndpointAcl = (endpoints: Record<string, any>) => {
 };
 
 export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) => {
-  await requireUser(req);
-  const tenant = await resolveTenant(req);
+  const user = await requireUser(req);
+  const tenant = await resolveTenant(req, user, req.method === 'GET' ? 'ide.acl.read' : 'ide.acl.write');
   const repo = CoreDataSource.getRepository(Tenant);
 
   if (req.method === 'GET') {

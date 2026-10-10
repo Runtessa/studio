@@ -44,7 +44,7 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
   }
 
   const user = await requireUser(req);
-  const tenant = await resolveTenant(req);
+  const tenant = await resolveTenant(req, user, ['ide.modules.read', 'ide.models.read', 'ide.ui.read']);
   await ensureCoreSchema();
 
   const moduleRepo = CoreDataSource.getRepository(ModuleEntity);

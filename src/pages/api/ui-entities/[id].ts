@@ -129,7 +129,7 @@ const createRevision = async (
 
 export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) => {
   const user = await requireUser(req);
-  const tenant = await resolveTenant(req);
+  const tenant = await resolveTenant(req, user, req.method === 'GET' ? 'ide.ui.read' : 'ide.ui.write');
   const repo = CoreDataSource.getRepository(UIPackage);
 
   if (req.method === 'GET') {

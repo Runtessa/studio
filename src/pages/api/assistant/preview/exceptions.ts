@@ -16,7 +16,7 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
   }
 
   const user = await requireUser(req);
-  const tenant = await resolveTenant(req);
+  const tenant = await resolveTenant(req, user, 'ide.ui.read');
   const userId = String(user.id);
   const tenantId = tenant.id;
 

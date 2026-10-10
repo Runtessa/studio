@@ -13,7 +13,7 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
   }
 
   const user = await requireUser(req);
-  const tenant = await resolveTenant(req);
+  const tenant = await resolveTenant(req, user);
   const { changes } = req.body ?? {};
   if (!Array.isArray(changes)) {
     const err = new Error('changes must be an array');
@@ -27,6 +27,7 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
     role: user.normalizedRole,
     permissions: user.permissions,
     isAdmin: user.isAdmin,
+    activeTeamId: user.activeTeamId,
     changes: [],
   });
 

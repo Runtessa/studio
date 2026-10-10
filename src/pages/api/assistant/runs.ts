@@ -11,8 +11,8 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
     return;
   }
 
-  await requireUser(req);
-  const tenant = await resolveTenant(req);
+  const user = await requireUser(req);
+  const tenant = await resolveTenant(req, user, 'ide.ui.read');
   const limit = Number(req.query.limit ?? 20);
   const offset = Number(req.query.offset ?? 0);
   const runs = await listAssistantRuns(tenant.id, { limit, offset });

@@ -115,8 +115,8 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
     return;
   }
 
-  await requireUser(req);
-  const tenant = await resolveTenant(req);
+  const user = await requireUser(req);
+  const tenant = await resolveTenant(req, user, 'ide.models.migrate');
   const adapterKey = normalizeKey(req.body?.adapterKey);
   const parsed = parseAdapterKey(adapterKey);
   const adapter = parsed.adapter;

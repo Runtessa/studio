@@ -84,8 +84,8 @@ const serialize = (mod: ModuleEntity) => ({
 
 export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) => {
   if (req.method === 'GET') {
-    await requireUser(req);
-    const tenant = await resolveTenant(req);
+    const user = await requireUser(req);
+    const tenant = await resolveTenant(req, user, 'ide.modules.read');
     const repo = CoreDataSource.getRepository(ModuleEntity);
     const modules = await repo.find({
       where: { tenant: { id: tenant.id } },
@@ -97,8 +97,8 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
   }
 
   if (req.method === 'POST') {
-    await requireUser(req);
-    const tenant = await resolveTenant(req);
+    const user = await requireUser(req);
+    const tenant = await resolveTenant(req, user, 'ide.modules.write');
     const { routePath, method, code } = req.body ?? {};
     const normalizedRoute = normalizeRoute(routePath);
     const normalizedMethod = normalizeMethod(method);

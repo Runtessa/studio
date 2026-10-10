@@ -1,3 +1,4 @@
+import { assertRollbackAccess } from './rollback-access';
 import { CoreDataSource, ensureCoreSchema } from '@/lib/core-db';
 import {
   HttpMethod,
@@ -117,6 +118,7 @@ export const rollbackChanges = async (
   ctx: AssistantToolContext
 ) => {
   await ensureCoreSchema();
+  await assertRollbackAccess(changes, ctx);
   const moduleRepo = CoreDataSource.getRepository(ModuleEntity);
   const modelRepo = CoreDataSource.getRepository(OrmModel);
   const uiRepo = CoreDataSource.getRepository(UIPackage);
@@ -133,22 +135,29 @@ export const rollbackChanges = async (
   for (const change of [...changes].reverse()) {
     if (change.kind === 'module') {
       if (change.action === 'create' && change.after) {
-        const mod = await moduleRepo.findOne({ where: { id: change.after.id } });
+        const mod = await moduleRepo.findOne({ where: { id: change.after.id, tenant: { id: ctx.tenant.id } } });
         if (mod) await moduleRepo.remove(mod);
       } else if (change.action === 'delete' && change.before) {
         const sourceCode = sourceRepo.create({ code: change.before.code ?? '' });
         await sourceRepo.save(sourceCode);
         const mod = moduleRepo.create({
-          ...(change.before as any),
+          id: change.before.id,
+          routePath: change.before.routePath,
+          method: change.before.method as HttpMethod,
+          fileExtension: change.before.fileExtension,
           sourceCode,
           tenant: ctx.tenant,
           draftVersion: generateVersion(),
         } as any) as unknown as ModuleEntity;
-        await moduleRepo.save(mod);
+        await moduleRepo.insert({
+          id: mod.id, routePath: mod.routePath, method: mod.method,
+          fileExtension: mod.fileExtension, draftVersion: mod.draftVersion,
+          sourceCode: { id: sourceCode.id }, tenant: { id: ctx.tenant.id },
+        });
         await ensureAclEndpoint(ctx.tenant, mod.routePath);
       } else if (change.action === 'update' && change.before) {
         const mod = await moduleRepo.findOne({
-          where: { id: change.before.id },
+          where: { id: change.before.id, tenant: { id: ctx.tenant.id } },
           relations: ['sourceCode'],
         });
         if (mod) {
@@ -168,7 +177,7 @@ export const rollbackChanges = async (
     if (change.kind === 'ui') {
       uiTouched = true;
       if (change.action === 'create' && change.after) {
-        const pkg = await uiRepo.findOne({ where: { id: change.after.id } });
+        const pkg = await uiRepo.findOne({ where: { id: change.after.id, tenant: { id: ctx.tenant.id } } });
         if (pkg) await uiRepo.remove(pkg);
       } else if (change.action === 'delete' && change.before) {
         const sourceCode = sourceRepo.create({ code: change.before.code ?? '' });
@@ -176,17 +185,26 @@ export const rollbackChanges = async (
         await sourceRepo.save(sourceCode);
         await compiledRepo.save(compiledCode);
         const pkg = uiRepo.create({
-          ...(change.before as any),
+          id: change.before.id,
+          name: change.before.name,
+          version: change.before.version,
+          dependencies: change.before.dependencies,
+          fileExtension: change.before.fileExtension,
           sourceCode,
           compiledCode,
           tenant: ctx.tenant,
           draftVersion: generateVersion(),
         } as any) as unknown as UIPackage;
-        await uiRepo.save(pkg);
+        await uiRepo.insert({
+          id: pkg.id, name: pkg.name, version: pkg.version,
+          dependencies: pkg.dependencies, fileExtension: pkg.fileExtension,
+          draftVersion: pkg.draftVersion, tenant: { id: ctx.tenant.id },
+          sourceCode: { id: sourceCode.id }, compiledCode: { id: compiledCode.id },
+        });
         await clearRegistryCache(ctx.tenant.id, pkg.name, pkg.version);
       } else if (change.action === 'update' && change.before) {
         const pkg = await uiRepo.findOne({
-          where: { id: change.before.id },
+          where: { id: change.before.id, tenant: { id: ctx.tenant.id } },
           relations: ['sourceCode', 'compiledCode'],
         });
         if (pkg) {
@@ -209,7 +227,7 @@ export const rollbackChanges = async (
 
     if (change.kind === 'model') {
       if (change.action === 'create' && change.after) {
-        const model = await modelRepo.findOne({ where: { id: change.after.id } });
+        const model = await modelRepo.findOne({ where: { id: change.after.id, tenant: { id: ctx.tenant.id } } });
         if (model) await modelRepo.remove(model);
       } else if (change.action === 'delete' && change.before) {
         const code = change.before.code ?? '';
@@ -221,16 +239,22 @@ export const rollbackChanges = async (
         await sourceRepo.save(sourceCode);
         await compiledRepo.save(compiledCode);
         const restored = modelRepo.create({
-          ...(change.before as any),
+          id: change.before.id,
+          path: change.before.path,
+          fileExtension,
           tenant: ctx.tenant,
           sourceCode,
           compiledCode,
           draftVersion: generateVersion(),
         } as any) as unknown as OrmModel;
-        await modelRepo.save(restored);
+        await modelRepo.insert({
+          id: restored.id, path: restored.path, fileExtension: restored.fileExtension,
+          draftVersion: restored.draftVersion, tenant: { id: ctx.tenant.id },
+          sourceCode: { id: sourceCode.id }, compiledCode: { id: compiledCode.id },
+        });
       } else if (change.action === 'update' && change.before) {
         const model = await modelRepo.findOne({
-          where: { id: change.before.id },
+          where: { id: change.before.id, tenant: { id: ctx.tenant.id } },
           relations: ['sourceCode', 'compiledCode'],
         });
         if (model) {
@@ -272,7 +296,7 @@ export const rollbackChanges = async (
       const projectRepo =
         change.projectKind === 'ui' ? sharedUiRepo : sharedModuleRepo;
       if (change.action === 'create' && change.after) {
-        const file = await fileRepo.findOne({ where: { id: change.after.id } });
+        const file = await fileRepo.findOne({ where: { id: change.after.id, project: { id: change.projectId } } });
         if (file) await fileRepo.remove(file);
       } else if (change.action === 'delete' && change.before) {
         const project = await projectRepo.findOne({
@@ -280,12 +304,15 @@ export const rollbackChanges = async (
         });
         if (!project) continue;
         const file = fileRepo.create({
-          ...(change.before as any),
+          id: change.before.id,
+          path: change.before.path,
+          content: change.before.content,
+          fileExtension: change.before.fileExtension,
           project: project as any,
         } as any);
-        await fileRepo.save(file);
+        await fileRepo.insert(file);
       } else if (change.action === 'update' && change.before) {
-        const file = await fileRepo.findOne({ where: { id: change.before.id } });
+        const file = await fileRepo.findOne({ where: { id: change.before.id, project: { id: change.projectId } } });
         if (file) {
           file.path = change.before.path;
           file.content = change.before.content;

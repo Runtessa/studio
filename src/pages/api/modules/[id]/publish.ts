@@ -31,8 +31,8 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
     return;
   }
 
-  await requireUser(req);
-  const tenant = await resolveTenant(req);
+  const user = await requireUser(req);
+  const tenant = await resolveTenant(req, user, 'ide.modules.write');
   const repo = CoreDataSource.getRepository(ModuleEntity);
   const mod = await repo.findOne({
     where: { id: req.query.id as string, tenant: { id: tenant.id } },

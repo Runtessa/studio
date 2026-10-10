@@ -4,6 +4,7 @@ import { requireAdmin } from '@/lib/auth';
 import { CoreDataSource, ensureCoreSchema } from '@/lib/core-db';
 import { PublishRequest } from '@idp/shared';
 import { resolveTenant } from '@/lib/tenancy';
+import { assertTenantReadableForUser } from '@/lib/team-tenant-access';
 
 export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) => {
   if (req.method !== 'GET') {
@@ -19,13 +20,15 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
   let where: any = {};
 
   if (tenantId) {
+    await assertTenantReadableForUser(user, tenantId);
     where.tenant = { id: tenantId };
   } else {
     // If no tenantId is provided, try to resolve from header
     try {
-      const tenant = await resolveTenant(req);
+      const tenant = await resolveTenant(req, user);
       where.tenant = { id: tenant.id };
-    } catch (e) {
+    } catch (e: any) {
+      if (e?.statusCode !== 400) throw e;
       // If we can't resolve tenant, only return all if platform admin
       if (user.role !== 'platform_admin' && user.normalizedRole !== 'platform_admin') {
         res.status(200).json([]);

@@ -12,6 +12,8 @@ import {
 } from '@idp/shared';
 import { resolveTenant } from '@/lib/tenancy';
 import { ensureCoreUserIdentity } from '@/lib/core-users';
+import { assertIdePermissions } from '@/lib/tenant-permissions';
+import { ensureSharedProjectEditable } from '@/lib/shared-project-access';
 
 export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) => {
   if (req.method !== 'POST') {
@@ -21,18 +23,12 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
   }
 
   const user = await requireUser(req);
-  const tenant = await resolveTenant(req);
+  const tenant = await resolveTenant(req, user);
   await ensureCoreSchema();
-  const coreUser = await ensureCoreUserIdentity({
-    id: user.id,
-    email: user.email,
-    role: user.role,
-    token: user.token ?? null,
-  });
 
   const { comment, itemIds } = req.body;
 
-  if (!comment || !itemIds || !Array.isArray(itemIds) || itemIds.length === 0) {
+  if (!comment || !itemIds || !Array.isArray(itemIds) || itemIds.length === 0 || !itemIds.every((id: unknown) => typeof id === 'string')) {
     res.status(400).json({ error: 'comment and non-empty itemIds are required' });
     return;
   }
@@ -41,6 +37,7 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
   
   for (const itemId of itemIds) {
     if (itemId.startsWith('module-')) {
+      assertIdePermissions(user, 'ide.modules.write');
       const id = itemId.replace('module-', '');
       const mod = await CoreDataSource.getRepository(ModuleEntity).findOne({
         where: { id, tenant: { id: tenant.id } },
@@ -63,6 +60,7 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
         });
       }
     } else if (itemId.startsWith('ui-')) {
+      assertIdePermissions(user, 'ide.ui.write');
       const id = itemId.replace('ui-', '');
       const pkg = await CoreDataSource.getRepository(UIPackage).findOne({
         where: { id, tenant: { id: tenant.id } },
@@ -104,6 +102,8 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
         ],
       });
       if (backendPkg) {
+        assertIdePermissions(user, 'ide.shared_modules.write');
+        ensureSharedProjectEditable(user, backendPkg);
         const publishedSourceCode = backendPkg.publishedSourceCode as any;
         items.push({
           kind: 'shared',
@@ -136,6 +136,8 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
         ],
       });
       if (uiPkg) {
+        assertIdePermissions(user, 'ide.shared_ui.write');
+        ensureSharedProjectEditable(user, uiPkg);
         const publishedSourceCode = uiPkg.publishedSourceCode as any;
         items.push({
           kind: 'shared',
@@ -163,6 +165,13 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
     res.status(400).json({ error: 'No valid items found to publish' });
     return;
   }
+
+  const coreUser = await ensureCoreUserIdentity({
+    id: user.id,
+    email: user.email,
+    role: user.role,
+    token: user.token ?? null,
+  });
 
   const repo = CoreDataSource.getRepository(PublishRequest);
   const request = repo.create({

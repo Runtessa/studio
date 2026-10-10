@@ -23,7 +23,7 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
   }
 
   const user = await requireUser(req);
-  const tenant = await resolveTenant(req);
+  const tenant = await resolveTenant(req, user, ['ide.modules.read', 'ide.models.read', 'ide.ui.read', 'ide.acl.read']);
   const allowClientConfig = process.env.AI_ALLOW_CLIENT_CONFIG === 'true';
 
   const {

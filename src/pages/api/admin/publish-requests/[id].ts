@@ -1,6 +1,7 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import { withApiHandler } from '@/lib/api-helpers';
 import { requireAdmin } from '@/lib/auth';
+import { assertTenantReadableForUser } from '@/lib/team-tenant-access';
 import { CoreDataSource, ensureCoreSchema } from '@/lib/core-db';
 import {
   PublishRequest,
@@ -114,7 +115,7 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
     return;
   }
 
-  await requireAdmin(req);
+  const user = await requireAdmin(req);
   await ensureCoreSchema();
 
   const { id } = req.query;
@@ -129,6 +130,8 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
     res.status(404).json({ error: 'Publish request not found' });
     return;
   }
+
+  await assertTenantReadableForUser(user, request.tenant.id);
 
   const items = Array.isArray(request.items) ? request.items : [];
   const normalizedItems = await Promise.all(

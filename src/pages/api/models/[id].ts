@@ -58,8 +58,8 @@ const serialize = (model: OrmModel) => ({
 });
 
 export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) => {
-  await requireUser(req);
-  const tenant = await resolveTenant(req);
+  const user = await requireUser(req);
+  const tenant = await resolveTenant(req, user, req.method === 'GET' ? 'ide.models.read' : 'ide.models.write');
   const repo = CoreDataSource.getRepository(OrmModel);
   const id = String(req.query.id || '');
 

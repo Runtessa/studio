@@ -14,7 +14,7 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
   }
 
   const user = await requireUser(req);
-  const tenant = await resolveTenant(req);
+  const tenant = await resolveTenant(req, user, ['ide.modules.read', 'ide.models.read', 'ide.ui.read', 'ide.acl.read']);
   const rawChatId = String(req.body?.chatId || '').trim();
   const chatId = rawChatId ? rawChatId.slice(0, 128) : 'default';
   const messages = normalizeMessages(req.body?.messages ?? []);

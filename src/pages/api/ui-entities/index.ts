@@ -99,8 +99,8 @@ const serialize = (pkg: UIPackage) => ({
 
 export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) => {
   if (req.method === 'GET') {
-    await requireUser(req);
-    const tenant = await resolveTenant(req);
+    const user = await requireUser(req);
+    const tenant = await resolveTenant(req, user, 'ide.ui.read');
     const repo = CoreDataSource.getRepository(UIPackage);
     const packages = await repo.find({
       where: { tenant: { id: tenant.id } },
@@ -112,8 +112,8 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
   }
 
   if (req.method === 'POST') {
-    await requireUser(req);
-    const tenant = await resolveTenant(req);
+    const user = await requireUser(req);
+    const tenant = await resolveTenant(req, user, 'ide.ui.write');
     const { name, version, codeBlob, dependencies } = req.body ?? {};
     const normalizedName = normalizeName(name);
     const normalizedVersion = normalizeVersion(version);

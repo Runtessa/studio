@@ -11,8 +11,8 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
     return;
   }
 
-  await requireUser(req);
-  const tenant = await resolveTenant(req);
+  const user = await requireUser(req);
+  const tenant = await resolveTenant(req, user, 'ide.ui.read');
   const runId = String(req.query.runId ?? '').trim();
   if (!runId) {
     const error = new Error('runId is required');
