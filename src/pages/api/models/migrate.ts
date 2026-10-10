@@ -1,5 +1,4 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import { DataSource } from 'typeorm';
 import { withApiHandler } from '@/lib/api-helpers';
 import { requireUser } from '@/lib/auth';
 import { CoreDataSource } from '@/lib/core-db';
@@ -7,7 +6,7 @@ import { OrmModel, Secret, Tenant } from '@idp/shared';
 import { resolveTenant } from '@/lib/tenancy';
 import { decryptSecret } from '@/lib/crypto';
 import { decryptPasswordFields } from '@/lib/adapter-config-passwords';
-import { loadOrmEntities } from '@/lib/orm-loader';
+import { migrateOrmModels } from '@/lib/orm-migration';
 import { compileOrmSource } from '@/lib/orm-compiler';
 
 type AdapterConfig = Record<string, unknown> | string;
@@ -165,21 +164,6 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
       throw error;
     }
   });
-  let entities: any[] = [];
-  try {
-    ({ entities } = loadOrmEntities(modelSources));
-  } catch (err) {
-    const error = new Error(
-      `Failed to load ORM entities: ${(err as Error).message}`
-    );
-    (error as any).statusCode = 400;
-    throw error;
-  }
-  if (!entities.length) {
-    res.status(400).json({ error: 'No valid TypeORM entities found' });
-    return;
-  }
-
   const secretValue = await resolveSecretValue(tenant, adapter, key);
   const config = selectReadWriteConfig(secretValue, 'write');
   let resolvedConfig: AdapterConfig = config;
@@ -196,19 +180,7 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
     }
   }
 
-  const dataSource = new DataSource({
-    type: adapter as 'postgres' | 'mysql' | 'mssql',
-    ...(typeof resolvedConfig === 'string'
-      ? { url: resolvedConfig }
-      : normalizeDbConfig(resolvedConfig as Record<string, unknown>)),
-    entities,
-    synchronize: false,
-    logging: false,
-  } as any);
-
-  await dataSource.initialize();
-  await dataSource.synchronize();
-  await dataSource.destroy();
-
-  res.status(200).json({ ok: true, entities: entities.length });
+  const result = await migrateOrmModels(modelSources, adapter,
+    typeof resolvedConfig === 'string' ? resolvedConfig : normalizeDbConfig(resolvedConfig));
+  res.status(200).json(result);
 });

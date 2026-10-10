@@ -51,6 +51,15 @@ repository/authentication doubles. They do not replace a live database, HTTP,
 concurrency, or penetration test. Run them along with the type check and production
 build when changing authorization.
 
+## Live model execution
+
+Model code remains executable and can use native TypeORM decorators, relations
+and methods. Loading and migration run in a restricted child process owned by the
+existing IDE service. The platform key and database connection stay in the parent;
+the child receives only the selected tenant adapter configuration. See
+[`docker/runtime/README.md`](../../docker/runtime/README.md) for the Linux runtime
+requirements, isolation tests and remaining network/resource limits.
+
 ## Request diagnostics
 
 Failed API requests record status, method, pathname, error class and source frames.
