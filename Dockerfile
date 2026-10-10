@@ -4,6 +4,10 @@ RUN apk add --no-cache bubblewrap
 
 WORKDIR /app/src/ideNew
 
+COPY LICENSE NOTICE THIRD_PARTY_NOTICES.md /app/
+COPY licenses /app/licenses
+
+
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NPM_CONFIG_UPDATE_NOTIFIER=false

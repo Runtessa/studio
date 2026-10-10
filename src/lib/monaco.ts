@@ -3,7 +3,7 @@ import { loader } from '@monaco-editor/react';
 const publicBase = (process.env.NEXT_PUBLIC_BASE_PATH || '').replace(/\/$/, '');
 const monacoBasePath = `${publicBase}/monaco`;
 
-type MonacoWithTypes = typeof import('monaco-editor/esm/vs/editor/editor.api');
+type MonacoWithTypes = typeof import('monaco-editor');
 
 const configureMonaco = () => {
   if (typeof window !== 'undefined') {

@@ -1,7 +1,7 @@
 import type React from 'react';
 import dynamic from 'next/dynamic';
 import type * as monaco from 'monaco-editor';
-import type * as monacoApi from 'monaco-editor/esm/vs/editor/editor.api';
+import type * as monacoApi from 'monaco-editor';
 import { PreviewInspectPanel } from '@/components/editor/PreviewInspectPanel';
 import { AclSideFormPanel, type AclFileKind } from '@/components/editor/AclSideFormPanel';
 import type {
