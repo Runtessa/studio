@@ -9,6 +9,11 @@
     "start": "next start",
     "type-check": "tsc --noEmit",
     "test:security": "node --test tests/*.test.cjs",
+    "db:status": "node ../packages/shared/dist/database/cli.js status --target ide",
+    "db:plan": "node ../packages/shared/dist/database/cli.js plan --target ide",
+    "db:diff": "node ../packages/shared/dist/database/cli.js diff --target ide",
+    "db:migrate": "node ../packages/shared/dist/database/cli.js migrate --target ide",
+    "db:adopt": "node ../packages/shared/dist/database/cli.js adopt --target ide",
     "dump": "node ./scripts/dump.js"
   },
   "dependencies": {

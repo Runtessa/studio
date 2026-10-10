@@ -53,6 +53,12 @@ build when changing authorization.
 
 ## Live model execution
 
+Platform tables use [versioned migrations](../../scripts/database/README.md).
+Core/IDE schema initialization checks history without changing tables. The old
+`CORE_DB_SYNC` flag is ignored; prepare the platform database explicitly before
+starting the IDE. Building or importing an API route does not initialize the
+database or bootstrap the admin user; initialization starts on the first request.
+
 Model code remains executable and can use native TypeORM decorators, relations
 and methods. Loading and migration run in a restricted child process owned by the
 existing IDE service. The platform key and database connection stay in the parent;
