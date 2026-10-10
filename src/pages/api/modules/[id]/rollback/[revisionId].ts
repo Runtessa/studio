@@ -1,3 +1,4 @@
+import { serializeModule as serialize } from '@/lib/api/tenant-artifact-dto';
 import { NextApiRequest, NextApiResponse } from 'next';
 import { withApiHandler } from '@/lib/api-helpers';
 import { requireUser } from '@/lib/auth';
@@ -6,23 +7,6 @@ import { ModuleEntity } from '@idp/shared';
 import { ModuleRevision } from '@idp/shared';
 import { resolveTenant } from '@/lib/tenancy';
 import { generateVersion } from '@/lib/version';
-
-const serialize = (mod: ModuleEntity) => ({
-  id: mod.id,
-  routePath: mod.routePath,
-  method: mod.method,
-  code: mod.code,
-  fileExtension: mod.fileExtension,
-  draftVersion: mod.draftVersion,
-  publishedVersion: mod.publishedVersion ?? undefined,
-  publishedRoutePath: mod.publishedRoutePath ?? undefined,
-  publishedMethod: mod.publishedMethod ?? undefined,
-  publishedCode: mod.publishedCode ?? undefined,
-  publishedFileExtension: mod.publishedFileExtension ?? undefined,
-  publishedAt: mod.publishedAt ?? undefined,
-  createdAt: mod.createdAt,
-  updatedAt: mod.updatedAt,
-});
 
 const createRevision = async (
   mod: ModuleEntity,

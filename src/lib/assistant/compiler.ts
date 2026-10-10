@@ -1,3 +1,4 @@
+import { buildCssModuleSource } from '@/lib/shared-build/css-module-source';
 import { transformSync } from '@babel/core';
 import presetEnv from '@babel/preset-env';
 import presetReact from '@babel/preset-react';
@@ -49,26 +50,7 @@ const resolveSharedExtension = (path: string, explicit?: string | null) => {
   return 'jsx';
 };
 
-const buildCssModuleSource = (path: string, cssText: string) => {
-  const safeText = JSON.stringify(cssText ?? '');
-  const id = JSON.stringify(`shared-style:${path}`);
-  return `
-const cssText = ${safeText};
-if (typeof document !== 'undefined') {
-  const attr = 'data-shared-style';
-  let style = document.querySelector('style[' + attr + '=' + ${id} + ']');
-  if (!style) {
-    style = document.createElement('style');
-    style.setAttribute(attr, ${id});
-    document.head.appendChild(style);
-  }
-  if (style.textContent !== cssText) {
-    style.textContent = cssText;
-  }
-}
-module.exports = cssText;
-`;
-};
+export { buildCssModuleSource } from '@/lib/shared-build/css-module-source';
 
 export const buildSharedBundle = (
   project: { entryPath: string },

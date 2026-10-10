@@ -81,6 +81,7 @@ const serializeTeam = (team: Team, memberCount = 0) => ({
   updatedAt: team.updatedAt,
 });
 
+// Duplicate D08: see docs/release/code-integrity-audit.md before changing either copy.
 const serializeMember = (member: TeamMember) => ({
   id: member.id,
   teamId: member.teamId,

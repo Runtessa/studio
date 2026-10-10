@@ -1,3 +1,4 @@
+import { buildCssModuleSource } from '@/lib/shared-build/css-module-source';
 import type { SharedFileDto, SharedProjectDto } from '@/components/editor/types';
 import { normalizeSharedPath, resolveSharedExtension } from './paths';
 
@@ -98,26 +99,7 @@ export const compileWithBabel = (code: string, options: CompileOptions = {}): st
   }
 };
 
-export const buildCssModuleSource = (path: string, cssText: string) => {
-  const safeText = JSON.stringify(cssText ?? '');
-  const id = JSON.stringify(`shared-style:${path}`);
-  return `
-const cssText = ${safeText};
-if (typeof document !== 'undefined') {
-  const attr = 'data-shared-style';
-  let style = document.querySelector('style[' + attr + '=' + ${id} + ']');
-  if (!style) {
-    style = document.createElement('style');
-    style.setAttribute(attr, ${id});
-    document.head.appendChild(style);
-  }
-  if (style.textContent !== cssText) {
-    style.textContent = cssText;
-  }
-}
-module.exports = cssText;
-`;
-};
+export { buildCssModuleSource } from '@/lib/shared-build/css-module-source';
 
 export const buildSharedBundle = (project: SharedProjectDto, files: SharedFileDto[]) => {
   const moduleEntries: string[] = [];

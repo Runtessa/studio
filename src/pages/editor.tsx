@@ -146,6 +146,7 @@ const toImportedUiEntityName = (basePackageName: string, filePath: string) => {
   return `${normalizedBase}/${withoutExt}`;
 };
 
+// Duplicate D24: see docs/release/code-integrity-audit.md before changing either copy.
 const normalizePreviewRouteValue = (value: string) => {
   const raw = String(value || '').trim();
   if (!raw) return '/';

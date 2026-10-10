@@ -1,3 +1,4 @@
+import { serializeModule as serialize } from '@/lib/api/tenant-artifact-dto';
 import { NextApiRequest, NextApiResponse } from 'next';
 import { withApiHandler } from '@/lib/api-helpers';
 import { requireUser } from '@/lib/auth';
@@ -6,6 +7,7 @@ import { HttpMethod, ModuleEntity, Tenant } from '@idp/shared';
 import { resolveTenant } from '@/lib/tenancy';
 import { generateVersion } from '@/lib/version';
 
+// Duplicate D22: see docs/release/code-integrity-audit.md before changing either copy.
 const normalizeMethod = (raw: unknown): HttpMethod => {
   if (typeof raw !== 'string') {
     const err = new Error('method is required');
@@ -47,6 +49,7 @@ const normalizeFileExtension = (raw: unknown): string => {
   return allowed.has(normalized) ? normalized : 'js';
 };
 
+// Duplicate D15: see docs/release/code-integrity-audit.md before changing either copy.
 const ensureAclEndpoint = async (tenant: Tenant, routePath: string) => {
   const endpoints = (tenant.aclEndpoints ?? {}) as Record<
     string,
@@ -64,23 +67,6 @@ const ensureAclEndpoint = async (tenant: Tenant, routePath: string) => {
   const tenantRepo = CoreDataSource.getRepository(Tenant);
   await tenantRepo.save(tenant);
 };
-
-const serialize = (mod: ModuleEntity) => ({
-  id: mod.id,
-  routePath: mod.routePath,
-  method: mod.method,
-  code: mod.code,
-  fileExtension: mod.fileExtension,
-  draftVersion: mod.draftVersion,
-  publishedVersion: mod.publishedVersion ?? undefined,
-  publishedRoutePath: mod.publishedRoutePath ?? undefined,
-  publishedMethod: mod.publishedMethod ?? undefined,
-  publishedCode: mod.publishedCode ?? undefined,
-  publishedFileExtension: mod.publishedFileExtension ?? undefined,
-  publishedAt: mod.publishedAt ?? undefined,
-  createdAt: mod.createdAt,
-  updatedAt: mod.updatedAt,
-});
 
 export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) => {
   if (req.method === 'GET') {

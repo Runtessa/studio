@@ -35,6 +35,7 @@ const normalizeCode = (raw: unknown): string => {
   return raw;
 };
 
+// Duplicate D23: see docs/release/code-integrity-audit.md before changing either copy.
 const normalizeFileExtension = (raw: unknown): string => {
   const allowed = new Set(['js']);
   if (!raw || typeof raw !== 'string') return 'js';

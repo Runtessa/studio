@@ -1,3 +1,4 @@
+import { parseNpmRequestSpecifier as parseRequestSpecifier } from '@idp/shared/dist/runtime/npm-specifier';
 import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
@@ -10,11 +11,7 @@ import { CoreDataSource } from './core-db';
 const execFileAsync = promisify(execFile);
 const EXTERNALS = ['react', 'react-dom', 'react-dom/client'];
 
-type ParsedSpecifier = {
-  installName: string;
-  requestSpecifier: string;
-  runtimeSpecifier: string;
-};
+type ParsedSpecifier = NonNullable<ReturnType<typeof parseRequestSpecifier>>;
 
 type BuiltArtifact = {
   specifier: string;
@@ -29,50 +26,6 @@ type BuiltArtifact = {
 const isBlockedName = (name: string) =>
   name.startsWith('@app/') || name.startsWith('@idp/') || name.startsWith('idp/') || name.startsWith('@shared/');
 
-const parseRequestSpecifier = (request: string): ParsedSpecifier | null => {
-  const normalized = String(request || '').trim();
-  if (!normalized) return null;
-  if (normalized.startsWith('.') || normalized.startsWith('/')) return null;
-  if (
-    normalized.includes('\0') ||
-    normalized.includes('\\') ||
-    normalized.includes('..') ||
-    normalized.includes('?') ||
-    normalized.includes('#')
-  ) {
-    return null;
-  }
-
-  if (normalized === 'react-router/dom') {
-    return {
-      installName: 'react-router-dom',
-      requestSpecifier: normalized,
-      runtimeSpecifier: 'react-router-dom',
-    };
-  }
-
-  const parts = normalized.split('/').filter(Boolean);
-  if (!parts.length) return null;
-  if (normalized.startsWith('@')) {
-    if (parts.length < 2) return null;
-    const scope = parts[0];
-    const pkg = parts[1];
-    if (!/^@[a-z0-9][a-z0-9._-]*$/i.test(scope)) return null;
-    if (!/^[a-z0-9][a-z0-9._-]*$/i.test(pkg)) return null;
-    return {
-      installName: `${scope}/${pkg}`,
-      requestSpecifier: normalized,
-      runtimeSpecifier: normalized,
-    };
-  }
-  const pkg = parts[0];
-  if (!/^[a-z0-9][a-z0-9._-]*$/i.test(pkg)) return null;
-  return {
-    installName: pkg,
-    requestSpecifier: normalized,
-    runtimeSpecifier: normalized,
-  };
-};
 
 const resolvePackageJsonPath = (workDir: string, packageName: string) =>
   path.join(workDir, 'node_modules', ...packageName.split('/'), 'package.json');

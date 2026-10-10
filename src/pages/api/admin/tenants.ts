@@ -23,6 +23,7 @@ const normalizeHostname = (raw: unknown) => normalizeTenantHostname(raw);
 const normalizeNumber = (raw: unknown, label: string, fallback: number) =>
   normalizeBoundedInteger(raw, label, fallback, label.includes('memory') ? 64 : 100, label.includes('memory') ? 262144 : 300000);
 
+// Duplicate D20: see docs/release/code-integrity-audit.md before changing either copy.
 const normalizeResourceConfig = (
   raw: unknown,
   fallback: { memory: number; timeout: number }
@@ -49,6 +50,7 @@ const normalizeBoolean = (raw: unknown, fallback: boolean) => {
   throw err;
 };
 
+// Duplicate D06: see docs/release/code-integrity-audit.md before changing either copy.
 const normalizeAuthDbConfig = (
   raw: unknown,
   fallback: { mode: 'shared' | 'dedicated'; secretKey?: string | null }
@@ -81,6 +83,7 @@ const normalizeAuthDbConfig = (
   } as { mode: 'shared' | 'dedicated'; secretKey?: string | null };
 };
 
+// Duplicate D12: see docs/release/code-integrity-audit.md before changing either copy.
 const normalizeBrandingConfig = (
   raw: unknown,
   fallback: { title?: string; faviconUrl?: string; appleTouchIconUrl?: string } = DEFAULT_BRANDING_CONFIG
@@ -148,6 +151,7 @@ const readLegacyBrandingConfig = (rawAdapterConfig: unknown) => {
   };
 };
 
+// Duplicate D10: see docs/release/code-integrity-audit.md before changing either copy.
 const parseAdapterConfigObject = (raw: unknown): Record<string, unknown> | null => {
   if (raw === undefined || raw === null) return null;
   if (typeof raw === 'string') {

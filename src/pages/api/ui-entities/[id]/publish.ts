@@ -1,3 +1,4 @@
+import { serializeUiPackage as serialize } from '@/lib/api/tenant-artifact-dto';
 import { NextApiRequest, NextApiResponse } from 'next';
 import { withApiHandler } from '@/lib/api-helpers';
 import { requireUser } from '@/lib/auth';
@@ -6,34 +7,8 @@ import { SourceCode, UIPackage } from '@idp/shared';
 import { resolveTenant } from '@/lib/tenancy';
 import redis from '@/lib/redis';
 import { generateVersion } from '@/lib/version';
-import {
-  getTailwindPackageName,
-  isTailwindPackageName,
-  stripTailwindDependency,
-} from '@/lib/tailwindBuilder';
+import { getTailwindPackageName, isTailwindPackageName } from '@/lib/tailwindBuilder';
 import { publishTailwindPackage } from '@/lib/ui-entity-tailwind';
-
-const serialize = (pkg: UIPackage) => ({
-  id: pkg.id,
-  name: pkg.name,
-  version: pkg.version,
-  code: pkg.code,
-  codeBlob: pkg.codeBlob,
-  dependencies: stripTailwindDependency(pkg.dependencies ?? [], getTailwindPackageName(pkg.name)),
-  fileExtension: pkg.fileExtension,
-  draftVersion: pkg.draftVersion,
-  publishedVersion: pkg.publishedVersion ?? undefined,
-  publishedCode: pkg.publishedCode ?? undefined,
-  publishedCodeBlob: pkg.publishedCodeBlob ?? undefined,
-  publishedDependencies: stripTailwindDependency(
-    pkg.publishedDependencies ?? [],
-    getTailwindPackageName(pkg.name)
-  ),
-  publishedFileExtension: pkg.publishedFileExtension ?? undefined,
-  publishedAt: pkg.publishedAt ?? undefined,
-  createdAt: pkg.createdAt,
-  updatedAt: pkg.updatedAt,
-});
 
 export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) => {
   if (req.method !== 'POST') {

@@ -1,3 +1,4 @@
+import { serializeUiPackage as serialize } from '@/lib/api/tenant-artifact-dto';
 import { NextApiRequest, NextApiResponse } from 'next';
 import { withApiHandler } from '@/lib/api-helpers';
 import { requireUser } from '@/lib/auth';
@@ -76,28 +77,6 @@ const normalizeFileExtension = (raw: unknown): string => {
   const normalized = raw.replace(/^\./, '').toLowerCase();
   return allowed.has(normalized) ? normalized : 'jsx';
 };
-
-const serialize = (pkg: UIPackage) => ({
-  id: pkg.id,
-  name: pkg.name,
-  version: pkg.version,
-  code: pkg.code,
-  codeBlob: pkg.codeBlob,
-  dependencies: stripTailwindDependency(pkg.dependencies ?? [], getTailwindPackageName(pkg.name)),
-  fileExtension: pkg.fileExtension,
-  draftVersion: pkg.draftVersion,
-  publishedVersion: pkg.publishedVersion ?? undefined,
-  publishedCode: pkg.publishedCode ?? undefined,
-  publishedCodeBlob: pkg.publishedCodeBlob ?? undefined,
-  publishedDependencies: stripTailwindDependency(
-    pkg.publishedDependencies ?? [],
-    getTailwindPackageName(pkg.name)
-  ),
-  publishedFileExtension: pkg.publishedFileExtension ?? undefined,
-  publishedAt: pkg.publishedAt ?? undefined,
-  createdAt: pkg.createdAt,
-  updatedAt: pkg.updatedAt,
-});
 
 const createRevision = async (
   pkg: UIPackage,

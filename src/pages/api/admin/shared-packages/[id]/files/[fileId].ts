@@ -33,6 +33,7 @@ const normalizeContent = (raw: unknown) => {
   return raw;
 };
 
+// Duplicate D19: see docs/release/code-integrity-audit.md before changing either copy.
 const normalizeFileExtension = (path: string, raw: unknown) => {
   const normalize = (value?: string) => {
     if (!value) return 'jsx';

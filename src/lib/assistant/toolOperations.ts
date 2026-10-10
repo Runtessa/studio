@@ -268,6 +268,7 @@ export const updateSharedBundle = async (
   return project;
 };
 
+// Duplicate D07: see docs/release/code-integrity-audit.md before changing either copy.
 const rebuildSharedProject = async (
   projectId: string,
   projectKind: 'ui' | 'module'
@@ -437,6 +438,7 @@ export const createSharedProjectInternal = async (
   };
 };
 
+// Duplicate D17: see docs/release/code-integrity-audit.md before changing either copy.
 const cleanupTailwindPackages = async (tenantId: string) => {
   const repo = CoreDataSource.getRepository(UIPackage);
   const packages = await repo.find({ where: { tenant: { id: tenantId } } });

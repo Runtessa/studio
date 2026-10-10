@@ -29,6 +29,7 @@ const requestWithNodeClient = async (urlString: string, init: NodeClientInit) =>
     const target = new URL(urlString);
     const isHttps = target.protocol === 'https:';
     const client = isHttps ? https : http;
+    // Duplicate D21: see docs/release/code-integrity-audit.md before changing either copy.
     const req = client.request(
       {
         protocol: target.protocol,

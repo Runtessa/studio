@@ -34,6 +34,7 @@ const normalizeRoles = (rolesInput: unknown, fallbackRole: unknown) => {
   return normalized;
 };
 
+// Duplicate D08: see docs/release/code-integrity-audit.md before changing either copy.
 const serializeMember = (member: TeamMember) => ({
   id: member.id,
   teamId: member.teamId,

@@ -1,3 +1,4 @@
+import { serializeSharedUiPackage as serialize } from '@/lib/api/shared-artifact-dto';
 import { NextApiRequest, NextApiResponse } from 'next';
 import { withApiHandler } from '@/lib/api-helpers';
 import { requireAdmin } from '@/lib/auth';
@@ -5,44 +6,9 @@ import { CoreDataSource, ensureCoreSchema } from '@/lib/core-db';
 import { GlobalUIPackage, SourceCode } from '@idp/shared';
 import redis from '@/lib/redis';
 import { generateVersion } from '@/lib/version';
-import {
-  getTailwindPackageName,
-  isTailwindPackageName,
-  stripTailwindDependency,
-} from '@/lib/tailwindBuilder';
+import { getTailwindPackageName, isTailwindPackageName } from '@/lib/tailwindBuilder';
 import { publishGlobalTailwindPackage } from '@/lib/shared-tailwind';
-import {
-  canEditSharedProject,
-  canManageSharedProjectAccess,
-  canPublishSharedProject,
-  claimSharedProjectOwnershipIfNeeded,
-  ensureSharedProjectPublishable,
-  getSharedProjectTeamAccess,
-} from '@/lib/shared-project-access';
-
-const serialize = (pkg: GlobalUIPackage, user: Awaited<ReturnType<typeof requireAdmin>>) => {
-  const teamAccess = getSharedProjectTeamAccess(pkg);
-  return {
-    id: pkg.id,
-    name: pkg.name,
-    version: pkg.version,
-    entryPath: pkg.entryPath,
-    code: pkg.code,
-    codeBlob: pkg.codeBlob,
-    dependencies: stripTailwindDependency(pkg.dependencies ?? [], getTailwindPackageName(pkg.name)),
-    fileExtension: pkg.fileExtension,
-    draftVersion: pkg.draftVersion,
-    publishedVersion: pkg.publishedVersion ?? undefined,
-    publishedAt: pkg.publishedAt ?? undefined,
-    ownerTeamId: teamAccess.ownerTeamId ?? undefined,
-    editorTeamIds: teamAccess.editorTeamIds,
-    canEdit: canEditSharedProject(user, pkg),
-    canPublish: canPublishSharedProject(user, pkg),
-    canManageAccess: canManageSharedProjectAccess(user, pkg),
-    createdAt: pkg.createdAt,
-    updatedAt: pkg.updatedAt,
-  };
-};
+import { claimSharedProjectOwnershipIfNeeded, ensureSharedProjectPublishable } from '@/lib/shared-project-access';
 
 export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) => {
   if (req.method !== 'POST') {
