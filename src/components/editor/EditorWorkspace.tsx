@@ -290,7 +290,7 @@ export function EditorWorkspace({
         <div className="absolute inset-0 flex items-center justify-center text-gray-400">
           <div className="flex flex-col items-center gap-8">
             <img
-              src="/brand/runtessa-signal.png"
+              src="/brand/runtessa-signal-transparent.png"
               alt="Runtessa"
               className="h-32 w-auto object-contain opacity-30 grayscale brightness-50"
             />
