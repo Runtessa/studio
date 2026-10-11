@@ -6,6 +6,7 @@ import { AuthGuard } from "@/components/AuthGuard";
 import { ToastProvider } from "@/components/ui/Toast";
 import { useRouter } from "next/router";
 import Head from "next/head";
+import branding from "@/branding.json";
 
 export default function App({ Component, pageProps }: AppProps) {
   const router = useRouter();
@@ -16,9 +17,9 @@ export default function App({ Component, pageProps }: AppProps) {
   return (
     <ToastProvider>
       <Head>
-        <title>Ashna CloudWay</title>
-        <meta name="application-name" content="Ashna CloudWay" />
-        <meta name="description" content="The familiar path from code to cloud." />
+        <title>{branding.app_title}</title>
+        <meta name="application-name" content="Runtessa" />
+        <meta name="description" content={branding.description} />
         <meta name="theme-color" content="#121212" />
       </Head>
       {isLogin ? (

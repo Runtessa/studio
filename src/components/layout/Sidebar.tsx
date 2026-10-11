@@ -16,7 +16,7 @@ import { Button } from "@/components/ui/Button";
 import { useSessionToken } from "@/lib/client/session";
 import { hasPermissionFromUser, toPermissionArray } from "@/lib/client/access";
 import type { IdePermission } from "@/lib/rbac";
-import Image from "next/image";
+import { BrandLockup } from "@/components/BrandLockup";
 import branding from "@/branding.json";
 
 type SidebarProps = {
@@ -152,8 +152,8 @@ export const Sidebar = ({ open, onClose }: SidebarProps) => {
   return (
     <>
       <div
-        className={`fixed inset-0 z-20 bg-bgApp opacity-60 transition-opacity lg:hidden ${
-          open ? "opacity-100" : "pointer-events-none opacity-0"
+        className={`fixed inset-0 z-20 bg-bgApp transition-opacity lg:hidden ${
+          open ? "opacity-60" : "pointer-events-none opacity-0"
         }`}
         onClick={onClose}
       />
@@ -166,13 +166,7 @@ export const Sidebar = ({ open, onClose }: SidebarProps) => {
         <div className="flex h-16 items-center bg-primaryDark justify-center px-4 sm:px-6 text-left border-b border-borderSubtle">
           <div className="flex items-center gap-3">
             <div className="flex h-11 items-center justify-center rounded-xl text-sm font-semibold text-textPrimary">
-              <Image
-                src={branding.logo_lw}
-                alt={branding.brand_name}
-                width={100}
-                height={30}
-                className="theme-aware-logo"
-              />
+              <BrandLockup />
             </div>
           </div>
         </div>

@@ -84,8 +84,8 @@ export default function ExtensionAuthPage() {
       <div className="mx-auto max-w-2xl rounded-3xl border border-borderSubtle bg-bgSurface/90 p-8 shadow-soft backdrop-blur">
         <div className="space-y-3">
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-textMuted">VS Code sign-in</p>
-          <h1 className="text-3xl font-semibold">Connect Ashna CloudWay</h1>
-          <p className="text-sm text-textMuted">This page transfers your current CloudWay session back to the VS Code extension.</p>
+          <h1 className="text-3xl font-semibold">Connect Runtessa</h1>
+          <p className="text-sm text-textMuted">This page transfers your current Runtessa session back to the VS Code extension.</p>
         </div>
 
         <div className="mt-8 rounded-2xl border border-borderSubtle bg-bgApp/60 p-5">

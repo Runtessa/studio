@@ -106,10 +106,10 @@ export const TopBar = ({ onMenuToggle }: TopBarProps) => {
           </Button>
           <div className="px-4 py-2 text-left">
             <div className="text-xs font-semibold uppercase tracking-[0.12em] text-textMuted">
-              Ashna CloudWay
+              Runtessa
             </div>
             <div className="text-sm font-semibold text-textPrimary">
-              CloudWay Console
+              Runtessa Console
             </div>
           </div>
         </div>
