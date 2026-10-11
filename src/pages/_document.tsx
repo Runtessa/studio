@@ -24,7 +24,7 @@ class MyDocument extends Document {
             href="https://fonts.gstatic.com"
             crossOrigin="anonymous"
           />
-          <link rel="icon" href="/brand/ashna-cloudway-icon-white-transparent.png" />
+          <link rel="icon" href="/brand/runtessa-signal.png" />
           <script dangerouslySetInnerHTML={{ __html: themeScript }} />
         </Head>
         <body className="bg-bgApp text-textPrimary">

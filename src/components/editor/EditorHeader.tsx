@@ -61,12 +61,12 @@ export function EditorHeader({
               alt={branding.brand_name}
               width={18}
               height={18}
-              className="theme-aware-logo"
+              className="rounded"
             />
           </span>
           <div className="leading-tight">
             <div className="text-[8px] font-semibold uppercase tracking-[0.2em] text-gray-400">
-              {branding.brand_name} Idp
+              {branding.brand_name}
             </div>
             <div className="text-[12px] font-semibold text-gray-100">Editor Studio</div>
           </div>

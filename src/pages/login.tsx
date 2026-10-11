@@ -1,6 +1,6 @@
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/router";
-import Image from "next/image";
+import { BrandLockup } from "@/components/BrandLockup";
 import { useSessionToken } from "@/lib/client/session";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -65,20 +65,13 @@ export default function Login() {
             <div className="md:w-1/2 bg-gradient-to-b from-primaryDark/80 to-bgSurface px-8 py-10 md:px-10 flex flex-col gap-6">
               <div>
                 <div className="mb-6 flex justify-center md:justify-start">
-                  <Image
-                    src={branding.logo_lw}
-                    alt={branding.brand_name}
-                    width={200}
-                    height={50}
-                    className="theme-aware-logo"
-                    priority
-                  />
+                  <BrandLockup />
                 </div>
                 <h1 className="mt-4 text-3xl font-semibold md:text-4xl">
                   {branding.app_title}
                 </h1>
                 <p className="mt-2 text-textMuted">
-                  Secure operations console for managing access, roles, and API usage.
+                  {branding.login_subtitle}
                 </p>
               </div>
               <div className="flex flex-col gap-3">
