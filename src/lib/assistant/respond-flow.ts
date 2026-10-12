@@ -1,136 +1,24 @@
-import type { NextApiRequest, NextApiResponse } from 'next';
+import type { CodexRunParams } from './respond-run-types';
 import {
   appendAssistantEvent,
   completeAssistantRun,
-  getAssistantRun,
-  getAssistantRunSummary,
+  checkpointAssistantChanges,
 } from '@/lib/assistant/state-store';
-import type { AssistantChange } from '@/lib/assistant/types';
-import type { AgentWorkspaceSession, WorkspaceContext } from '@/lib/assistant/respond-runtime';
+import type { WorkspaceContext } from '@/lib/assistant/respond-runtime';
 import {
   executeCodexPipeline,
   normalizeSystemPrompt,
   resolveCodexModel,
 } from '@/lib/assistant/respond-runtime';
-import { commitCodexGatewayWorkspace, resetCodexGatewayWorkspace } from '@/lib/assistant/gateway-workspace';
-import type { WorkspaceFileEvent } from '@/lib/assistant/respond-runtime/codex-client';
-
-const openSse = (res: NextApiResponse) => {
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache, no-transform');
-  res.setHeader('Connection', 'keep-alive');
-  (res as any).flushHeaders?.();
-};
-
-const sendSse = (res: NextApiResponse, payload: Record<string, unknown>) => {
-  res.write(`data: ${JSON.stringify(payload)}\n\n`);
-};
-
-const normalizeWorkspaceFileEvent = (event: WorkspaceFileEvent) => ({
-  path: String(event.path || '').trim(),
-  action: event.action === 'create' || event.action === 'delete' ? event.action : 'edit',
-  content: typeof event.content === 'string' ? event.content : undefined,
-});
-
-type CachedRunParams = {
-  tenantId: string;
-  runId: string;
-  reusedRunId: string;
-  stream: boolean;
-  res: NextApiResponse;
-  changes: AssistantChange[];
-};
-
-export const tryRespondFromCachedRun = async ({
-  tenantId,
-  runId,
-  reusedRunId,
-  stream,
-  res,
-  changes,
-}: CachedRunParams): Promise<boolean> => {
-  const cached = await getAssistantRun(tenantId, reusedRunId);
-  if (cached) {
-    if (stream) {
-      openSse(res);
-      sendSse(res, { type: 'start', runId: cached.runId });
-      sendSse(res, {
-        type: 'done',
-        message: cached.message,
-        changes: Array.isArray((cached as any).changes) ? (cached as any).changes : [],
-        finishReason: cached.finishReason,
-        runId: cached.runId,
-        usage: cached.usage,
-        events: cached.events,
-        dag: cached.dag,
-        conflicts: cached.conflicts,
-        cached: true,
-      });
-      res.end();
-      return true;
-    }
-    res.status(200).json({
-      message: cached.message,
-      changes: Array.isArray((cached as any).changes) ? (cached as any).changes : [],
-      finishReason: cached.finishReason,
-      runId: cached.runId,
-      usage: cached.usage,
-      events: cached.events,
-      dag: cached.dag,
-      conflicts: cached.conflicts,
-      cached: true,
-    });
-    return true;
-  }
-
-  const summary = await getAssistantRunSummary(tenantId, reusedRunId);
-  if (summary?.status === 'running') {
-    if (stream) {
-      openSse(res);
-      sendSse(res, { type: 'start', runId: reusedRunId });
-      sendSse(res, {
-        type: 'done',
-        message: 'Equivalent run is already in progress. Retry in a few seconds.',
-        changes,
-        runId: reusedRunId,
-        pending: true,
-      });
-      res.end();
-      return true;
-    }
-    res.status(202).json({
-      message: 'Equivalent run is already in progress. Retry in a few seconds.',
-      runId: reusedRunId,
-      pending: true,
-    });
-    return true;
-  }
-
-  return false;
-};
-
-type CodexRunParams = {
-  req: NextApiRequest;
-  res: NextApiResponse;
-  tenantId: string;
-  userId: string | number;
-  userName?: string;
-  chatId: string;
-  runId: string;
-  runName: string;
-  idempotency: string;
-  stream: boolean;
-  rawSystemPrompt: unknown;
-  config: unknown;
-  allowClientConfig: boolean;
-  messages: Array<{ role: string; content: string }>;
-  contextText: string;
-  session: AgentWorkspaceSession;
-  tools: Record<string, unknown>;
-  workspace: WorkspaceContext;
-  changes: AssistantChange[];
-  codexSystemPrompt: string;
-};
+import { syncAssistantWorkspace } from './run-workspace-sync';
+import { openSse, sendSse } from './respond-cached';
+export { tryRespondFromCachedRun } from './respond-cached';
+import { createAssistantRunControl } from './run-control';
+import { assertWorkspacePreconditions } from './respond-runtime/workspace-preconditions';
+import { executeTool } from './respond-runtime/codex-types';
+import type { CodexOperation } from './respond-runtime/codex-types';
+import { sharedWriteResources } from './respond-runtime/shared-write-resources';
+import { overlayOwnChanges } from './respond-runtime/workspace-overlay';
 
 export const handleCodexRun = async ({
   req,
@@ -147,6 +35,7 @@ export const handleCodexRun = async ({
   config,
   allowClientConfig,
   messages,
+  attachments,
   contextText,
   session,
   tools,
@@ -157,28 +46,8 @@ export const handleCodexRun = async ({
   const systemPrompt = normalizeSystemPrompt(rawSystemPrompt, codexSystemPrompt);
   const codexModel = resolveCodexModel((config ?? {}) as { model?: string }, allowClientConfig);
 
-  const syncGatewayWorkspace = async (action: 'commit' | 'reset') => {
-    if (!session?.tenant?.id) return;
-    try {
-      if (action === 'commit') {
-        await commitCodexGatewayWorkspace({
-          userId,
-          userName,
-          chatId,
-          tenantId: session.tenant.id,
-        });
-        return;
-      }
-      await resetCodexGatewayWorkspace({
-        userId,
-        userName,
-        chatId,
-        tenantId: session.tenant.id,
-      });
-    } catch {
-      // keep run result authoritative; gateway workspace can be repaired on next activation
-    }
-  };
+  const syncGatewayWorkspace = (action: 'commit' | 'reset') =>
+    session.tenant?.id ? syncAssistantWorkspace({ userId, userName, chatId, tenantId: session.tenant.id }, action) : Promise.resolve();
 
   const completePipeline = async (pipeline: Awaited<ReturnType<typeof executeCodexPipeline>>) => {
     const now = new Date().toISOString();
@@ -186,6 +55,8 @@ export const handleCodexRun = async ({
       runId,
       tenantId,
       runName,
+      chatId,
+      userId: String(userId),
       status: pipeline.status,
       message: pipeline.message,
       finishReason: pipeline.finishReason,
@@ -201,15 +72,73 @@ export const handleCodexRun = async ({
     });
   };
 
-  if (stream) {
-    openSse(res);
-    sendSse(res, { type: 'start', runId });
+  const control = await createAssistantRunControl({
+    tenantId,
+    runId,
+    req,
+    res,
+    readOnly: session.task.expectations.mode === 'read-only',
+  }).catch(async (error) => {
+    const now = new Date().toISOString();
+    await completeAssistantRun({
+      tenantId,
+      runId,
+      chatId,
+      userId: String(userId),
+      runName,
+      status: 'failed',
+      message: error.message,
+      finishReason: error.code || 'assistant-start-failed',
+      idempotencyKey: idempotency,
+      createdAt: now,
+      updatedAt: now,
+      events: [],
+      changes: [],
+      artifacts: [],
+      dag: { nodes: [], edges: [] },
+      conflicts: [],
+    });
+    throw error;
+  });
+  let writes = Promise.resolve();
+  const recordEvent = (event: Parameters<typeof appendAssistantEvent>[2]) => {
+    writes = writes.then(() => appendAssistantEvent(tenantId, runId, event));
+    void writes.catch(() => undefined);
+  };
+  const beforeApply = async (operations: CodexOperation[]) => {
+    const { expected } = overlayOwnChanges(workspace, session.acl as Record<string, unknown>, changes);
+    await control.acquireResources(sharedWriteResources(operations, expected));
+    await control.assertOwnership();
+    const [current, currentAcl] = await Promise.all([
+      executeTool<WorkspaceContext, {}>((tools as any).list_workspace, {}),
+      executeTool<Record<string, unknown>, {}>((tools as any).get_acl_config, {}),
+    ]);
+    assertWorkspacePreconditions({
+      baseline: workspace,
+      baselineAcl: session.acl as Record<string, unknown>,
+      current,
+      currentAcl,
+      operations,
+      appliedChanges: changes,
+    });
+  };
+  const heartbeat = stream
+    ? setInterval(() => {
+        if (!res.destroyed && !res.writableEnded) res.write(': keepalive\n\n');
+      }, 15000)
+    : undefined;
+  try {
+    if (stream) {
+      openSse(res);
+      sendSse(res, { type: 'start', runId });
+    }
     const pipeline = await executeCodexPipeline({
       runId,
       userId,
       userName,
       chatId,
       messages,
+      attachments,
       contextText,
       session,
       systemPrompt,
@@ -217,72 +146,53 @@ export const handleCodexRun = async ({
       tools: tools as Record<string, any>,
       workspace,
       changes,
-      onProgress: (line) => sendSse(res, { type: 'progress', line }),
-      onChange: (change) => sendSse(res, { type: 'change', change }),
-      onWorkspaceFile: (event) =>
-        sendSse(res, { type: 'workspace_file', file: normalizeWorkspaceFileEvent(event) }),
+      signal: control.signal,
+      beforeApply,
+      onDelta: stream ? (content) => sendSse(res, { type: 'delta', content }) : undefined,
+      onProgress: stream ? (line) => sendSse(res, { type: 'progress', line }) : undefined,
+      onChange: (change) => {
+        if (stream) sendSse(res, { type: 'change', change });
+        const saved = [...changes];
+        writes = writes
+          .catch(() => undefined)
+          .then(() => checkpointAssistantChanges(tenantId, runId, saved))
+          .then(() => undefined);
+        void writes.catch(() => undefined);
+      },
+      onWorkspaceFile: stream ? (file) => sendSse(res, { type: 'workspace_file', file }) : undefined,
       onEvent: (event) => {
-        sendSse(res, { type: 'run_event', event });
-        void appendAssistantEvent(tenantId, runId, event).catch(() => undefined);
+        if (stream) sendSse(res, { type: 'run_event', event });
+        recordEvent(event);
       },
     });
+    // The final payload contains the ordered event list even when a transient
+    // event append failed. Persist that authoritative result before reporting it.
+    await writes.catch(() => undefined);
     await completePipeline(pipeline);
     await syncGatewayWorkspace(pipeline.status === 'completed' ? 'commit' : 'reset');
-
-    if (pipeline.status === 'failed') {
-      sendSse(res, {
-        type: 'error',
-        message:
-          pipeline.conflicts[0]?.message ||
-          pipeline.message ||
-          `Codex pipeline failed (${pipeline.finishReason || 'unknown reason'})`,
-      });
-    }
-    sendSse(res, {
-      type: 'done',
-      message: pipeline.message,
-      changes: pipeline.changes,
-      finishReason: pipeline.finishReason,
+    const result = { ...pipeline, runId };
+    if (stream) {
+      sendSse(res, { type: 'done', ...result });
+      res.end();
+    } else res.status(200).json(result);
+  } catch (error) {
+    await syncGatewayWorkspace('reset');
+    const message = changes.length
+      ? 'Some changes were saved, but the run could not be recorded. Reload and review the saved files before retrying.'
+      : 'The assistant could not record this run. Reload and check its status before retrying.';
+    const failure = {
       runId,
-      usage: pipeline.usage,
-      events: pipeline.events,
-      dag: pipeline.dag,
-      conflicts: pipeline.conflicts,
-    });
-    res.end();
-    return;
+      status: 'failed',
+      message,
+      changes,
+      finishReason: 'assistant-persistence-failed',
+    };
+    if (stream) {
+      sendSse(res, { type: 'done', ...failure });
+      res.end();
+    } else res.status(503).json(failure);
+  } finally {
+    clearInterval(heartbeat);
+    await control.dispose();
   }
-
-  const pipeline = await executeCodexPipeline({
-    runId,
-    userId,
-    userName,
-    chatId,
-    messages,
-    contextText,
-    session,
-    systemPrompt,
-    model: codexModel,
-    tools: tools as Record<string, any>,
-    workspace,
-    changes,
-    onEvent: (event) => {
-      void appendAssistantEvent(tenantId, runId, event).catch(() => undefined);
-    },
-  });
-  await completePipeline(pipeline);
-  await syncGatewayWorkspace(pipeline.status === 'completed' ? 'commit' : 'reset');
-  if (pipeline.status === 'failed') {
-    throw new Error(pipeline.conflicts[0]?.message || pipeline.message || 'Codex execution failed');
-  }
-  res.status(200).json({
-    message: pipeline.message,
-    changes: pipeline.changes,
-    finishReason: pipeline.finishReason,
-    runId,
-    usage: pipeline.usage,
-    events: pipeline.events,
-    dag: pipeline.dag,
-    conflicts: pipeline.conflicts,
-  });
 };

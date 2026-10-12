@@ -1,8 +1,10 @@
+import type { AttachmentContent } from '@/lib/assistant/attachment-types';
 import { spawn } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { resolveCodexGatewayBase } from '@/lib/assistant/gateway';
+import { loadCodexModelCatalog } from '@/lib/assistant/model-catalog';
 import {
   resolveCodexGatewayBaseForUser,
   resolveCodexGatewayModeValue,
@@ -189,15 +191,19 @@ export type CodexExecInput = {
   userName?: string;
   chatId?: string;
   messages: Array<{ role: string; content: string }>;
+  attachments?: AttachmentContent[];
   contextText: string;
   session?: AgentWorkspaceSession;
   systemPrompt: string;
   model?: string;
   onLine?: (line: string) => void;
   onWorkspaceFile?: (event: WorkspaceFileEvent) => void;
+  onDelta?: (delta: string) => void;
+  signal?: AbortSignal;
 };
 
 const executeCodexCli = async (input: CodexExecInput) => {
+  if (input.attachments?.length) throw new Error('File and image attachments require the Codex gateway. Enable it in Assistant settings.');
   const outputFile = path.join(tmpdir(), `idp-codex-last-${input.runId}.txt`);
   const prompt = buildCodexPrompt(
     input.messages,
@@ -320,17 +326,21 @@ const executeCodexGateway = async (input: CodexExecInput) => {
   if (!baseUrl) {
     throw new Error('AGENT_CODEX_GATEWAY_URL is not configured');
   }
+  const model = input.model || (await loadCodexModelCatalog(input.userId, input.userName)).defaultModel;
 
   const response = await fetch(`${baseUrl}/v1/exec`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
+    signal: input.signal,
     body: JSON.stringify({
       userId: String(input.userId),
       chatId: input.chatId || 'default',
       prompt: getLatestUserPrompt(input.messages),
       systemPrompt: buildGatewayWorkspaceSystemPrompt(input.systemPrompt, input.session),
       agentSession: input.session,
-      model: input.model,
+      messages: input.messages,
+      attachments: input.attachments,
+      model,
       stream: true,
     }),
   });
@@ -382,6 +392,10 @@ const executeCodexGateway = async (input: CodexExecInput) => {
 
     if (eventName === 'status') {
       input.onLine?.(`[gateway] ${String(payload?.state || 'status')}`);
+      return;
+    }
+    if (eventName === 'assistant-delta') {
+      if (typeof payload?.delta === 'string') input.onDelta?.(payload.delta);
       return;
     }
     if (eventName === 'stdout') {

@@ -73,7 +73,7 @@ export function CodexSettingsCard({
 
       <div className="rounded border border-[#2a2d2e] bg-[#111111] p-2 text-[11px] text-gray-300">
         <div className="mb-1 flex items-center justify-between">
-          <span className="text-[10px] uppercase text-gray-500">Gateway container</span>
+          <span className="text-[10px] uppercase text-gray-500">Codex connection</span>
           <span
             className={`rounded border px-2 py-0.5 text-[10px] ${
               codexRuntime?.running
@@ -83,7 +83,7 @@ export function CodexSettingsCard({
                   : 'border-[#2a2d2e] bg-[#171717] text-gray-400'
             }`}
           >
-            {codexRuntime?.running ? 'running' : codexRuntime?.exists ? 'stopped' : 'not created'}
+            {codexRuntime?.running ? 'connected' : codexRuntime?.exists ? 'stopped' : 'not connected'}
           </span>
         </div>
 
@@ -135,6 +135,7 @@ export function CodexSettingsCard({
           >
             Refresh runtime
           </Button>
+          {codexRuntime?.mode === 'container' ? <>
           <Button variant="secondary" size="xs" onClick={() => runCodexRuntimeAction('create')} disabled={Boolean(codexRuntimeAction)}>
             {codexRuntimeAction === 'create' ? 'Creating...' : 'Create'}
           </Button>
@@ -170,6 +171,7 @@ export function CodexSettingsCard({
           >
             {codexRuntimeAction === 'remove' ? 'Removing...' : 'Remove'}
           </Button>
+          </> : null}
         </div>
       </div>
 

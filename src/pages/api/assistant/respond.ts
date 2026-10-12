@@ -1,3 +1,4 @@
+import { resolveAttachments } from '@/lib/assistant/attachment-store';
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { withApiHandler } from '@/lib/api-helpers';
 import { requireUser } from '@/lib/auth';
@@ -27,12 +28,14 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
   const allowClientConfig = process.env.AI_ALLOW_CLIENT_CONFIG === 'true';
 
   const {
+    attachmentIds,
     messages,
     config,
     stream,
     context: rawContext,
     chatId: rawChatId,
     systemPrompt: rawSystemPrompt,
+    requestId: rawRequestId,
   } = req.body ?? {};
 
   const chatId =
@@ -47,13 +50,14 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
     throw err;
   }
 
+  const attachments = await resolveAttachments({ tenantId: tenant.id, userId: user.id }, attachmentIds);
   const changes: AssistantChange[] = [];
   const context =
     rawContext && typeof rawContext === 'object'
       ? (rawContext as RawAssistantContext)
       : null;
 
-  const { tools, workspace, session, contextText } = await buildAssistantRequestRuntime({
+  const { tools, workspace, session, contextText: workspaceContextText } = await buildAssistantRequestRuntime({
     tenant,
     user,
     chatId,
@@ -62,9 +66,11 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
     changes,
   });
 
+  const contextText = workspaceContextText + (attachments.length ? '\nAttached references:\n' + JSON.stringify(attachments.map(({ base64, ...ref }) => ref)) : '');
   const runId = createRunId(chatId);
 
-  const idempotency = buildAssistantIdempotencyKey(normalizedMessages, contextText);
+  const requestId = typeof rawRequestId === 'string' ? rawRequestId.trim().slice(0, 128) : undefined;
+  const idempotency = buildAssistantIdempotencyKey(normalizedMessages, contextText, { userId: user.id, chatId, requestId });
   const existingRunSummary = await getAssistantRunSummary(tenant.id, runId);
   const runName = existingRunSummary?.runName || buildRunName(normalizedMessages);
   const reservation = await reserveAssistantRun(tenant.id, runId, idempotency);
@@ -81,7 +87,7 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
     if (handled) return;
   }
 
-  await startAssistantRun(tenant.id, runId, { idempotency, runName });
+  await startAssistantRun(tenant.id, runId, { idempotency, runName, chatId, userId: String(user.id) });
 
   await handleCodexRun({
     req,
@@ -98,6 +104,7 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
     config,
     allowClientConfig,
     messages: normalizedMessages,
+    attachments,
     contextText,
     session,
     tools: tools as Record<string, unknown>,

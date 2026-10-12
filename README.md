@@ -76,6 +76,62 @@ repository/authentication doubles. They do not replace a live database, HTTP,
 concurrency, or penetration test. Run them along with the type check and production
 build when changing authorization.
 
+## Authenticated preview
+
+Studio authorizes Preview through the current IDE session and selected team's
+tenant access. Set the server-only `CORE_PREVIEW_INTERNAL_URL` to Runtime and
+configure the same dedicated `CORE_STUDIO_PREVIEW_TOKEN` in both services. Docker
+environment initialization generates this credential automatically; existing
+private environment files are preserved and require an explicit configuration
+update. No new service is needed.
+
+Preview credentials last ten minutes, renew while open, and reach only the exact
+preview frame/origin. The preview attaches them only to its own Runtime requests,
+not external package/CDN requests. They cannot manage Runtime code, ACL,
+orchestration, or admin APIs. Running application routes still enforces tenant
+ACL. End-user SSO remains a separate application login flow.
+
+## Codex assistant reliability
+
+The existing assistant gateway runs native Codex with each signed-in user's account.
+It receives the authorized workspace, shared frontend/backend packages, active/open
+editor buffers and selected source ranges. Keep the gateway available while using
+Studio; its connection and model are shown in Agent settings.
+
+Each request has an independent run ID. Repeated delivery of the same request nonce
+reuses its result; different users, chats and fresh requests stay separate. Run
+history and saved-change checkpoints are retained in Redis for seven days. Legacy
+history remains intact; runs without recorded ownership are visible only to platform
+administrators. Non-admin run pagination uses the user's own index. Browser chat
+state is also scoped to the authenticated user and tenant. Ownerless legacy browser
+chats remain stored and are imported only for platform administrators.
+
+- **Read-only** runs use the native read-only sandbox and reject host mutation tools
+  before applying a batch. The selection survives page reloads.
+- **Stop** requests reach the server worker. The worker checks cancellation before
+  applying further operations. An operation already being saved can finish; saved
+  changes remain listed even when the overall run stops or fails.
+- Reloading or disconnecting stops the active request. Studio recovers its recorded
+  outcome instead of showing a false success or waiting indefinitely. Worker leases
+  expire after 90 seconds without renewal; interrupted workers retain their last
+  saved-change checkpoint. This recovers results, not background execution.
+- Assistant writers are serialized per tenant and, when applying shared files, per
+  shared package across tenants. The writer lease is renewed while work continues.
+  Read-only requests do not hold these writer locks.
+- Before applying a batch, Studio compares its touched files and ACL with the current
+  stored workspace, accounting for the same run's previous changes. A stale snapshot
+  fails with a conflict. Newer manual editor buffers survive streaming, recovery,
+  completion and refresh; use the stored diff to reconcile them.
+
+The stale-file check is a batch preflight, not a transaction spanning every application
+write. A manual write racing the actual save still needs per-resource database version
+checks for fully atomic conflict prevention. Native generation may also produce work
+that fails platform validation; a failed run must be reviewed before retrying.
+
+Validation: `npm run test:security`, `npm run type-check` and `npm run build`.
+Reliability tests exercise unique history, ownership, idempotency, cancellation,
+shared writer leases, interrupted recovery, stale files, and React buffer updater replays.
+
 ## Live model execution
 
 Platform tables use [versioned migrations](../../scripts/database/README.md).
@@ -114,3 +170,40 @@ ciphertext unreadable. Rotation requires a database backup, an inventory of all
 encrypted values, re-encryption with verification, and a coordinated Core/IDE key
 switch. Provider credentials and signing/session keys require separate revocation
 and service updates. Do not treat history cleanup as credential revocation.
+
+## Assistant attachments and preview annotations
+
+Use the paperclip in the chat composer to attach PNG, JPEG or WebP images,
+UTF-8 text, or source files. Multiple file selection, dropping files on the
+composer, and pasting images are supported. Images can be opened at full size;
+sent attachments can be downloaded. **Retry** keeps the original attachment
+references, including preview notes.
+
+To annotate the running app, open **Preview** and choose **Annotate preview** in
+the composer. Studio captures the current iframe viewport. Drag a rectangle or
+click a point, write a note for each numbered region, then choose **Add to chat**.
+Undo, remove-region and Cancel do not modify the app. The full screenshot,
+flattened region markers, notes, route and draft/published stage are sent only
+when the chat message is sent. This does not add files to the tenant's codebase.
+
+The Codex gateway receives real image inputs and reference-file contents;
+filenames alone are not used as context. CLI-only/repository mode rejects
+attachments with an actionable error instead of silently dropping them.
+
+Limits: five attachments and 10 MB combined per message; 5 MB per still image,
+256 KB per text/source file, 8192 pixels per image side and 24 million pixels.
+PDF, office documents, archives, audio and video are not accepted. Uploaded
+attachment downloads expire after seven days; an expired reference must be
+reattached. Redis storage is scoped to the authenticated user and selected
+tenant, with an atomic quota of 64 files / 100 MB per scope. Chat local storage
+contains metadata and IDs, never file bytes. Codex's native conversation history
+has its own lifecycle and can retain reference contents after downloads expire.
+
+Preview capture uses the `html-to-image` renderer bundled by Kernel.
+`npm --prefix src/kernel run build:preview` builds it; `build:front` includes
+this step. Runtime serves the renderer
+from its own origin; it never executes renderer scripts from the configured
+Studio URL. The iframe bridge accepts messages only from its configured Studio parent, origin and session.
+Studio checks the replying iframe, origin, session and request ID. It renders the
+DOM viewport; embedded video, nested frames or inaccessible external assets may
+not reproduce like a browser screenshot. Review the capture before sending.

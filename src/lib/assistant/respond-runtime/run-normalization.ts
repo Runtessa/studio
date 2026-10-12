@@ -1,4 +1,5 @@
 import type { MastraModelConfig } from '@mastra/core/llm';
+import { randomUUID } from 'node:crypto';
 
 const MAX_CONTEXT_CHARS = 240000;
 const MAX_SYSTEM_PROMPT_CHARS = 120000;
@@ -118,7 +119,7 @@ export const createRunId = (chatId?: string) => {
   const normalizedChatId = String(chatId || '').trim();
   if (normalizedChatId) {
     const compact = normalizedChatId.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 96);
-    return `chat-${compact || 'default'}`;
+    return `chat-${compact || 'default'}-${randomUUID()}`;
   }
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID();
@@ -127,7 +128,7 @@ export const createRunId = (chatId?: string) => {
 };
 
 export const buildRunName = (messages: Array<{ role: string; content: string }>) => {
-  const firstUser = messages.find((message) => message.role === 'user' && message.content.trim());
+  const firstUser = [...messages].reverse().find((message) => message.role === 'user' && message.content.trim());
   const raw = firstUser?.content?.trim() || '';
   if (!raw) return 'Untitled run';
   const singleLine = raw.replace(/\s+/g, ' ').trim();

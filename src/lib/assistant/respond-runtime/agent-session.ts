@@ -1,5 +1,7 @@
+import { inferTaskExpectations, type TaskExpectations } from './task-scope';
 import type { PreviewExceptionEntry } from '@/lib/assistant/preview-exceptions-store';
 import type { AssistantChange } from '@/lib/assistant/types';
+import {applyEditorContext,type EditorBuffer,type EditorSelection} from './editor-context';
 import {
   toModelVirtualPath,
   toModuleVirtualPath,
@@ -91,17 +93,6 @@ type SessionSourceFile = {
   content: string;
 };
 
-type TaskExpectations = {
-  mode: 'read-only' | 'mutate';
-  autonomous: boolean;
-  backend: boolean;
-  models: boolean;
-  ui: boolean;
-  acl: boolean;
-  shared: boolean;
-  preview: boolean;
-  reasons: string[];
-};
 
 export type AgentWorkspaceSession = {
   version: '2026-06-01';
@@ -119,6 +110,8 @@ export type AgentWorkspaceSession = {
     validationRules: string[];
   };
   workspace: {
+    openFiles?: Array<{path:string;isDirty:boolean}>;
+    selection?: (EditorSelection & {path:string;text:string}) | null;
     stats: {
       modules: number;
       models: number;
@@ -199,56 +192,6 @@ const summarizePreviewException = (item: PreviewExceptionEntry) => ({
   stack: item.stack,
 });
 
-const inferTaskExpectations = (objective: string, activeFilePath: string): TaskExpectations => {
-  const prompt = String(objective || '');
-  const lower = prompt.toLowerCase();
-  const path = String(activeFilePath || '').toLowerCase();
-  const reasons: string[] = [];
-  const hasAny = (...patterns: RegExp[]) => patterns.some((pattern) => pattern.test(prompt));
-  const readOnly =
-    hasAny(/\b(review|audit|analyze|analyse|explain|describe|blueprint|document|summari[sz]e|inspect)\b/i) &&
-    !hasAny(/\b(fix|implement|create|update|edit|change|patch|refactor|remove|delete|build|develop|add|write to file|save)\b/i);
-  const mutate = !readOnly;
-  const implementationRequest = mutate;
-  const autonomous =
-    implementationRequest &&
-    !hasAny(
-      /\b(module|backend|endpoint|route|api|model|entity|schema|database|orm|ui|frontend|component|page|screen|acl|permission|role|shared)\b/i,
-    );
-  if (readOnly) reasons.push('request is read-only by intent');
-  if (autonomous) reasons.push('request is implementation-oriented but does not explicitly name a surface');
-
-  const backend =
-    path.startsWith('modules/') ||
-    path.startsWith('shared-modules/') ||
-    hasAny(/\b(api|endpoint|route|backend|handler|module|server)\b/i);
-  if (backend) reasons.push('request references backend routes/modules');
-
-  const models =
-    path.startsWith('models/') ||
-    hasAny(/\b(model|entity|database|table|schema|orm|repository|typeorm)\b/i);
-  if (models) reasons.push('request references data models/database work');
-
-  const ui =
-    path.startsWith('ui/') ||
-    path.startsWith('shared-ui/') ||
-    hasAny(/\b(ui|ux|page|screen|dashboard|component|form|layout|frontend|preview|style|tailwind)\b/i);
-  if (ui) reasons.push('request references UI/preview concerns');
-
-  const acl =
-    path.startsWith('modules/acl/') ||
-    hasAny(/\b(acl|permission|permissions|role|roles|access|authorize|authorization)\b/i) ||
-    backend;
-  if (acl) reasons.push('backend or access-control changes may require ACL updates');
-
-  const shared = path.startsWith('shared-') || hasAny(/\b(shared|package|library)\b/i);
-  if (shared) reasons.push('request targets shared workspace assets');
-
-  const preview = hasAny(/\b(preview|runtime error|exception|console error|browser error)\b/i);
-  if (preview) reasons.push('request references preview/runtime feedback');
-
-  return { mode: readOnly ? 'read-only' : 'mutate', autonomous, backend, models, ui, acl, shared, preview, reasons };
-};
 
 const changeToPath = (change: AssistantChange): string | null => {
   if (change.kind === 'module') {
@@ -399,14 +342,6 @@ const buildWorkspaceFiles = (workspace: WorkspaceContextInput, acl: AgentWorkspa
   return files;
 };
 
-const resolveActiveFilePath = (activeFile: ActiveFileContext, files: SessionSourceFile[]) => {
-  if (!activeFile) return '';
-  const byId = files.find((file) => file.id && file.id === activeFile.id);
-  if (byId) return byId.path;
-  const byName = files.find((file) => file.entityName === activeFile.name || file.path.endsWith(activeFile.name));
-  return byName?.path || activeFile.name || '';
-};
-
 export const buildAgentWorkspaceSession = (input: {
   chatId: string;
   messages: Array<{ role: string; content: string }>;
@@ -415,6 +350,8 @@ export const buildAgentWorkspaceSession = (input: {
   preview?: { enabled: boolean; exceptions: PreviewExceptionEntry[] };
   actor?: { role: string; permissions: string[] };
   activeFile?: ActiveFileContext;
+  openFiles?: EditorBuffer[];
+  selection?: EditorSelection | null;
   previousRun?: {
     message?: string;
     status?: string;
@@ -422,11 +359,12 @@ export const buildAgentWorkspaceSession = (input: {
   } | null;
 }): AgentWorkspaceSession => {
   const files = buildWorkspaceFiles(input.workspace, input.acl);
+  const editorContext = applyEditorContext(files,input.activeFile,input.openFiles,input.selection);
   const objective =
     [...input.messages]
       .reverse()
       .find((message) => message.role === 'user' && message.content.trim())?.content || '';
-  const activeFilePath = resolveActiveFilePath(input.activeFile ?? null, files);
+  const activeFilePath = editorContext.selectedFile?.path || '';
   const recentChangePaths = (input.previousRun?.changes || [])
     .map(changeToPath)
     .filter((value): value is string => Boolean(value));
@@ -465,6 +403,8 @@ export const buildAgentWorkspaceSession = (input: {
       ],
     },
     workspace: {
+      openFiles:editorContext.openFiles,
+      selection:editorContext.selection,
       stats: {
         modules: input.workspace.modules.length,
         models: input.workspace.models.length,
@@ -472,7 +412,7 @@ export const buildAgentWorkspaceSession = (input: {
         sharedUiFiles: (input.workspace.sharedUiFiles ?? input.workspace.sharedUi).length,
         sharedModuleFiles: (input.workspace.sharedModuleFiles ?? input.workspace.sharedModules).length,
       },
-      activeFile: input.activeFile
+      activeFile: input.activeFile && editorContext.selectedFile
         ? {
             id: input.activeFile.id,
             name: input.activeFile.name,

@@ -19,6 +19,7 @@ import { useEditorHistory } from '@/components/editor/hooks/useEditorHistory';
 import { useEditorModalActions } from '@/components/editor/hooks/useEditorModalActions';
 import { useEditorShortcuts } from '@/components/editor/hooks/useEditorShortcuts';
 import { useEditorPreviewActions } from '@/components/editor/hooks/useEditorPreviewActions';
+import { usePreviewSession } from '@/components/editor/hooks/usePreviewSession';
 import { useEditorTabDragDrop } from '@/components/editor/hooks/useEditorTabDragDrop';
 import { useEditorClosePrompt } from '@/components/editor/hooks/useEditorClosePrompt';
 import { useEditorResizeStart } from '@/components/editor/hooks/useEditorResizeStart';
@@ -37,6 +38,8 @@ import { EditorTabBar } from '@/components/editor/EditorTabBar';
 import { EditorTabContextMenu } from '@/components/editor/EditorTabContextMenu';
 import { EditorWorkspace } from '@/components/editor/EditorWorkspace';
 import type { LiveWorkspaceFileUpdate } from '@/components/editor/ai-panel/shared';
+import { assistantChangedBufferIds, reconcileSavedBuffers } from '@/components/editor/utils/reconcileBuffers';
+import { LiveBufferGuard } from '@/components/editor/utils/liveBufferGuard';
 import type { AclFileKind } from '@/components/editor/AclSideFormPanel';
 import { EditorModals } from '@/components/editor/EditorModals';
 import {
@@ -372,7 +375,9 @@ export default function EditorPage() {
   const [rightPaneIds, setRightPaneIds] = useState<string[]>([]);
   const editorAreaRef = useRef<HTMLDivElement | null>(null);
   const assistantPanelWidthRef = useRef(assistantPanelWidth);
-  const liveWorkspaceSnapshotsRef = useRef<Record<string, string>>({});
+  const liveBufferGuardRef = useRef(new LiveBufferGuard());
+  const currentBufferValuesRef = useRef(fileContents);
+  currentBufferValuesRef.current = fileContents;
   const assistantResizeRef = useRef<{
     active: boolean;
     startX: number;
@@ -383,6 +388,7 @@ export default function EditorPage() {
     startWidth: DEFAULT_ASSISTANT_PANEL_WIDTH,
   });
   const mainEditorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
+  const lastFocusedEditorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const sideEditorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const handleSaveRef = useRef<() => void>(() => {});
   const searchDecorationsRef = useRef<string[]>([]);
@@ -534,34 +540,14 @@ export default function EditorPage() {
         .map((file) => file.id);
       if (!matchingFileIds.length) return;
 
-      setFileContents((prev) => {
-        const next = { ...prev };
-        for (const fileId of matchingFileIds) {
-          if (liveWorkspaceSnapshotsRef.current[fileId] === undefined) {
-            liveWorkspaceSnapshotsRef.current[fileId] =
-              prev[fileId] ?? savedContentsRef.current[fileId] ?? '';
-          }
-          next[fileId] = update.action === 'delete' ? '' : String(update.content || '');
-        }
-        return next;
-      });
+      setFileContents(liveBufferGuardRef.current.update(savedContentsRef.current, matchingFileIds, update));
     },
     [openFiles, resolveEditorVirtualPath]
   );
   const handleLiveWorkspaceRunStateChange = useCallback(
-    (state: 'committed' | 'reverted') => {
-      const snapshots = liveWorkspaceSnapshotsRef.current;
-      liveWorkspaceSnapshotsRef.current = {};
-      if (state !== 'reverted') return;
-      const entries = Object.entries(snapshots);
-      if (!entries.length) return;
-      setFileContents((prev) => {
-        const next = { ...prev };
-        for (const [fileId, content] of entries) {
-          next[fileId] = content;
-        }
-        return next;
-      });
+    (state: 'started' | 'committed' | 'reverted') => {
+      if (state === 'started') { liveBufferGuardRef.current.begin({ ...savedContentsRef.current, ...currentBufferValuesRef.current }); return; }
+      setFileContents(liveBufferGuardRef.current.finishUpdater(state === 'reverted'));
     },
     []
   );
@@ -897,7 +883,7 @@ export default function EditorPage() {
   }, [aclConfig, folderOverrides, isSharedMode, modelsData, modulesData, uiData]);
 
 
-  const loadSharedProject = useCallback(async () => {
+  const loadSharedProject = useCallback(async (replacedBufferIds: string[] = []) => {
     if (!sharedProjectId) return;
     setLoadingTree(true);
     setTreeError('');
@@ -920,7 +906,10 @@ export default function EditorPage() {
           sharedKind: sharedMode ?? undefined,
         })
       );
-      setSavedContents(buildSharedContentMap(files));
+      const nextSaved = buildSharedContentMap(files);
+      const previousSaved = savedContentsRef.current;
+      setFileContents(current => reconcileSavedBuffers(current, previousSaved, nextSaved, replacedBufferIds.filter(id => liveBufferGuardRef.current.canRefresh(id, current[id] ?? previousSaved[id]))));
+      setSavedContents(nextSaved);
     } catch (err) {
       setTreeError((err as Error).message || 'Failed to load shared project');
     } finally {
@@ -929,7 +918,7 @@ export default function EditorPage() {
   }, [adminFetch, sharedBasePath, sharedFolderOverrides, sharedProjectId, sharedRootLabel, sharedMode]);
 
   const loadTree = useCallback(
-    async (overrides: FolderOverride[] = folderOverrides) => {
+    async (overrides: FolderOverride[] = folderOverrides, replacedBufferIds: string[] = []) => {
       if (loadTreeInFlightRef.current) return;
       loadTreeInFlightRef.current = true;
       setLoadingTree(true);
@@ -954,7 +943,10 @@ export default function EditorPage() {
         setUiData(uiItems);
         setAclConfig(normalizedAcl);
         setTreeData(buildExplorerTree(moduleItems, uiItems, modelItems, overrides, normalizedAcl));
-        setSavedContents(buildPersistedContentMap(moduleItems, uiItems, modelItems, normalizedAcl));
+        const nextSaved = buildPersistedContentMap(moduleItems, uiItems, modelItems, normalizedAcl);
+        const previousSaved = savedContentsRef.current;
+        setFileContents(current => reconcileSavedBuffers(current, previousSaved, nextSaved, replacedBufferIds.filter(id => liveBufferGuardRef.current.canRefresh(id, current[id] ?? previousSaved[id]))));
+        setSavedContents(nextSaved);
       } catch (err) {
         setTreeError((err as Error).message || 'Failed to load explorer');
       } finally {
@@ -981,12 +973,12 @@ export default function EditorPage() {
     if (sharedFiles.length) setSharedFiles([]);
   }, [isSharedMode, sharedFiles.length, sharedProject]);
 
-  const reloadTree = useCallback(async () => {
+  const reloadTree = useCallback(async (replacedBufferIds: string[] = []) => {
     if (isSharedMode) {
-      await loadSharedProject();
+      await loadSharedProject(replacedBufferIds);
       return;
     }
-    await loadTree();
+    await loadTree(undefined, replacedBufferIds);
   }, [isSharedMode, loadSharedProject, loadTree]);
 
   useEffect(() => {
@@ -1821,10 +1813,14 @@ export default function EditorPage() {
     const session = encodeURIComponent(previewSession);
     const kernelMode =
       process.env.NODE_ENV !== 'production' ? '&kernelMode=source' : '';
-    return `${base}/preview.html?name=${name}&version=${version}&tenantHost=${tenant}&previewSession=${session}&stage=${stage}&t=${previewNonce}${kernelMode}`;
+    const editorOrigin = encodeURIComponent(window.location.origin);
+    return `${base}/preview.html?name=${name}&version=${version}&tenantHost=${tenant}&previewSession=${session}&editorOrigin=${editorOrigin}&stage=${stage}&t=${previewNonce}${kernelMode}`;
   }, [previewBaseUrl, previewNonce, previewSession, previewStage, previewTarget, tenantHost]);
 
   const previewSrc = autoPreviewSrc;
+
+  usePreviewSession({ enabled: editorView === 'preview', previewSrc, previewSession,
+    frameRef: previewFrameRef, apiFetch });
 
   useEffect(() => {
     if (editorView !== 'preview') return;
@@ -2233,7 +2229,6 @@ export default function EditorPage() {
   const {
     handleSwitchToPreview,
     handleRefreshPreview,
-    refreshWorkspace,
     openAssistantDiffPreview,
   } = useEditorPreviewActions({
     isSharedMode,
@@ -2451,10 +2446,12 @@ export default function EditorPage() {
               onSideEditorChange={handleSideEditorChange}
               onMainEditorMount={(editor) => {
                 mainEditorRef.current = editor;
+                editor.onDidFocusEditorText(() => {lastFocusedEditorRef.current=editor;});
                 bindSaveShortcut(editor);
               }}
               onSideEditorMount={(editor) => {
                 sideEditorRef.current = editor;
+                editor.onDidFocusEditorText(() => {lastFocusedEditorRef.current=editor;});
                 bindSaveShortcut(editor);
               }}
               onSplitResizeStart={handleSplitResizeStart}
@@ -2497,11 +2494,28 @@ export default function EditorPage() {
                 apiFetch={apiFetch}
                 apiStreamFetch={apiStreamFetch}
                 tenantHost={tenantHost}
+                getPreviewSource={() => editorView === 'preview' ? { frame: previewFrameRef.current, src: previewSrc, session: previewSession } : null}
                 activeFile={activeFile}
+                openFiles={openFiles}
+                getEditorSelection={() => {
+                  const editor = lastFocusedEditorRef.current ?? mainEditorRef.current;
+                  if (!editor?.getModel()) return null;
+                  const selection = editor?.getSelection();
+                  const fileId = resolveEditorFileId(editor ?? null,activeFile?.id);
+                  if (!selection || !fileId) return null;
+                  return {fileId,startLineNumber:selection.startLineNumber,startColumn:selection.startColumn,
+                    endLineNumber:selection.endLineNumber,endColumn:selection.endColumn};
+                }}
                 fileContents={fileContents}
                 savedContents={savedContents}
                 aclConfig={aclConfig}
-                onWorkspaceRefresh={refreshWorkspace}
+                onWorkspaceRefresh={async (changes = [], options) => {
+                  const conflicts = liveBufferGuardRef.current.conflicts;
+                  await reloadTree(options?.preserveBuffers ? [] : assistantChangedBufferIds(openFiles, changes).filter(id => !conflicts.has(id)));
+                  if (conflicts.size) showError('Your newer edits were kept. Review the assistant diff before saving these files.');
+                  conflicts.clear();
+                  await loadHistory();
+                }}
                 onOpenChangeInMainEditor={openAssistantDiffPreview}
                 onLiveWorkspaceFileUpdate={handleLiveWorkspaceFileUpdate}
                 onLiveWorkspaceRunStateChange={handleLiveWorkspaceRunStateChange}

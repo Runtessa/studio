@@ -151,19 +151,14 @@ export const assertBackendModuleContract = (code: string) => {
 
 export const assertDashboardEntrypointCode = (name: string, code: string) => {
   if (name !== DASHBOARD_UI_NAME) return;
-  if (!/export\s+function\s+App\s*\(/m.test(code)) {
-    throw new Error('Entrypoint UI package "@app/dashboard" must export a named function App().');
-  }
-  if (/export\s+default\s+/m.test(code)) {
+  // Both exports are supported by KernelRuntime and the tenant starter project.
+  if (!/export\s+(?:default\s+)?function\s+App\s*\(/m.test(code)) {
     throw new Error(
-      'Entrypoint UI package "@app/dashboard" cannot use default export. Use "export function App()".',
+      'Entrypoint UI package "@app/dashboard" must export function App(), either named or default.',
     );
   }
-  if (!hasKernelClientImport(code) || !hasKernelClientUsage(code)) {
-    throw new Error(
-      `Entrypoint UI package "${DASHBOARD_UI_NAME}" must import and use "${KERNEL_API_CLIENT_MODULE}" (useApiClient/getApiClient).`,
-    );
-  }
+  // Static UI needs no client hook; actual networking must still use datacontext.
+  assertUiCodeIsRuntimeSafe(code);
 };
 
 export const assertNonDashboardDoesNotDefineAppEntrypoint = (name: string, code: string) => {

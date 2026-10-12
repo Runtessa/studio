@@ -54,6 +54,8 @@ const resolveSecretValue = async (tenant: Tenant, adapter: string, key: string) 
   const lowerKey = rawKey.toLowerCase();
   const adapterLower = adapter.toLowerCase();
   const candidates = [
+    `adapter:${adapterLower}:${lowerKey}:default:write`,
+    `adapter:${adapterLower}:${lowerKey}:default`,
     `${adapterLower}:${lowerKey}`,
     `${adapterLower}:${rawKey}`,
     lowerKey,
@@ -141,6 +143,7 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
   const modelRepo = CoreDataSource.getRepository(OrmModel);
   const models = await modelRepo.find({
     where: { tenant: { id: tenant.id } },
+    relations: ['sourceCode', 'compiledCode'],
     order: { path: 'ASC' },
   });
   if (!models.length) {

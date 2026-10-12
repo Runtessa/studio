@@ -2,6 +2,7 @@ import type { AssistantChange } from '@/lib/assistant/types';
 import type { CodexOperation, FileDirective } from './codex-types';
 import { executeTool } from './codex-types';
 import { buildOperationsFromDirectives } from './codex-directives';
+import { expandWorkspaceFileBatch } from './workspace-file-batch';
 import {
   normalizeOperationInput,
   pickInput,
@@ -36,7 +37,14 @@ export const executeCodexOperations = async (
   getChanges: () => AssistantChange[],
   onChange?: (change: AssistantChange) => void,
   onProgress?: (line: string) => void,
+  policy: { readOnly?: boolean; signal?: AbortSignal; beforeApply?: (operations: CodexOperation[]) => Promise<void> } = {},
 ) => {
+  operations = expandWorkspaceFileBatch(operations, workspace) ?? operations;
+  if (policy.readOnly && operations.some(op => CODEX_MUTATION_TOOLS.has(toToolId(String(op.tool || op.name || op.action || op.toolId || ''))))) {
+    throw Object.assign(new Error('Read-only requests cannot change workspace files.'), { code: 'assistant-read-only' });
+  }
+  policy.signal?.throwIfAborted();
+  await policy.beforeApply?.(operations);
   const logs: string[] = [];
   const errors: string[] = [];
   let executed = 0;
@@ -47,6 +55,7 @@ export const executeCodexOperations = async (
     operation: CodexOperation,
     indexLabel: string,
   ) => {
+    policy.signal?.throwIfAborted();
     const toolId = toToolId(
       String(operation.tool || operation.name || operation.action || operation.toolId || ''),
     );
@@ -90,6 +99,7 @@ export const executeCodexOperations = async (
         fallbackInput.code = (input as Record<string, unknown>).code;
         fallbackInput.fileExtension = (input as Record<string, unknown>).fileExtension;
         if (updateTool?.execute && (fallbackInput.id || fallbackInput.routePath)) {
+          policy.signal?.throwIfAborted();
           onProgress?.('create_module already exists, retrying as update_module...\n');
           try {
             await executeTool(updateTool, fallbackInput);
@@ -120,6 +130,7 @@ export const executeCodexOperations = async (
   };
 
   for (let index = 0; index < operations.length; index += 1) {
+    policy.signal?.throwIfAborted();
     const op = operations[index];
     const toolId = toToolId(String(op.tool || op.name || op.action || op.toolId || ''));
     if (!toolId) continue;

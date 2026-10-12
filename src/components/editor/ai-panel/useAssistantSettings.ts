@@ -1,11 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
+import { createChatSessionId } from './shared';
+import { readOwnedAssistantChat, type StoredAssistantChat } from './assistantChatStorage';
 import type { Dispatch, SetStateAction } from 'react';
-import type {
-  AiMessage,
-  AiSettings,
-  ApiFetch,
-  AssistantAgentProfile,
-} from './shared';
+import type { AiMessage, AiSettings, ApiFetch, AssistantAgentProfile } from './shared';
 
 type Params = {
   apiFetch: ApiFetch;
@@ -16,13 +13,6 @@ type Params = {
   setChatSessionId: Dispatch<SetStateAction<string>>;
   showError: (message: string) => void;
   storagePrefix: string;
-};
-
-type StoredState = {
-  messages?: AiMessage[];
-  chatSessionId?: string;
-  settings?: Partial<AiSettings>;
-  promptOverride?: string;
 };
 
 const emptyProfile: AssistantAgentProfile = {
@@ -45,9 +35,7 @@ const normalizeProfile = (raw: unknown): AssistantAgentProfile => {
     provider: String(item.provider || ''),
     model: String(item.model || ''),
     systemPrompt: String(item.systemPrompt || ''),
-    contextPolicy: Array.isArray(item.contextPolicy)
-      ? item.contextPolicy.map((entry) => String(entry))
-      : [],
+    contextPolicy: Array.isArray(item.contextPolicy) ? item.contextPolicy.map((entry) => String(entry)) : [],
     supportsGatewayRuntime: item.supportsGatewayRuntime !== false,
   };
 };
@@ -66,56 +54,59 @@ export const useAssistantSettings = ({
     model: '',
     allowClientConfig: false,
     watchPreviewExceptions: false,
+    readOnly: false,
   });
   const [profile, setProfile] = useState<AssistantAgentProfile>(emptyProfile);
   const [promptOverride, setPromptOverrideState] = useState('');
-
-  const storageKey = useMemo(
-    () => `${storagePrefix}:${tenantHost || 'default'}`,
-    [storagePrefix, tenantHost],
-  );
+  const [hydratedScope, setHydratedScope] = useState<{ key: string; tenant: string } | null>(null);
 
   useEffect(() => {
+    setHydratedScope(null);
+    setMessages([]);
+    setChatSessionId(createChatSessionId());
     if (!tenantHost) return;
-    const raw = localStorage.getItem(storageKey);
-    if (!raw) return;
-    try {
-      const parsed = JSON.parse(raw) as StoredState;
-      if (parsed.messages) setMessages(parsed.messages);
-      if (parsed.chatSessionId && parsed.chatSessionId.trim()) {
-        setChatSessionId(parsed.chatSessionId.trim());
-      }
-      if (parsed.settings) {
-        setSettings((prev) => ({ ...prev, ...parsed.settings }));
-      }
-      if (typeof parsed.promptOverride === 'string') {
-        setPromptOverrideState(parsed.promptOverride);
-      }
-    } catch {
-      // ignore malformed state
-    }
-  }, [setChatSessionId, setMessages, storageKey, tenantHost]);
-
-  useEffect(() => {
-    if (!tenantHost) return;
+    let cancelled = false;
     const restore = async () => {
       try {
         const config = await apiFetch('/api/assistant/config');
+        if (cancelled) return;
         const serverProfile = normalizeProfile(config?.profile);
+        const { key, chat } = readOwnedAssistantChat(localStorage, storagePrefix, tenantHost, {
+          userId: String(config.userId || ''),
+          isAdmin: config.isAdmin === true,
+        });
+        setMessages(Array.isArray(chat.messages) ? chat.messages : []);
+        setChatSessionId(
+          typeof chat.chatSessionId === 'string' && chat.chatSessionId.trim()
+            ? chat.chatSessionId.trim()
+            : createChatSessionId(),
+        );
         setProfile(serverProfile);
-        setSettings((prev) => ({
-          ...prev,
-          model: config.model || serverProfile.model || '',
+        setSettings({
+          model:
+            config.allowClientConfig &&
+            chat.settings?.model &&
+            Array.isArray(config.models) &&
+            config.models.includes(chat.settings.model)
+              ? chat.settings.model
+              : config.model || serverProfile.model || '',
           allowClientConfig: Boolean(config.allowClientConfig),
           watchPreviewExceptions:
-            config.watchPreviewExceptions === true ? true : prev.watchPreviewExceptions,
-        }));
+            config.watchPreviewExceptions === true || chat.settings?.watchPreviewExceptions === true,
+          readOnly: chat.settings?.readOnly === true,
+        });
+        setPromptOverrideState(typeof chat.promptOverride === 'string' ? chat.promptOverride : '');
+        setHydratedScope({ key, tenant: tenantHost });
+        if (config.connectionError) showError(String(config.connectionError));
       } catch (err) {
-        showError((err as Error).message || 'Failed to load assistant settings');
+        if (!cancelled) showError((err as Error).message || 'Failed to load assistant settings');
       }
     };
     void restore();
-  }, [apiFetch, showError, tenantHost]);
+    return () => {
+      cancelled = true;
+    };
+  }, [apiFetch, showError, storagePrefix, tenantHost, setMessages, setChatSessionId]);
 
   const defaultSystemPrompt = profile.systemPrompt || '';
   const systemPrompt = promptOverride || defaultSystemPrompt;
@@ -126,19 +117,20 @@ export const useAssistantSettings = ({
   };
 
   useEffect(() => {
-    if (!tenantHost) return;
-    const toStore: StoredState = {
+    if (!hydratedScope || hydratedScope.tenant !== tenantHost) return;
+    const toStore: StoredAssistantChat = {
       messages,
       chatSessionId,
       settings: {
         model: settings.model,
         allowClientConfig: settings.allowClientConfig,
         watchPreviewExceptions: settings.watchPreviewExceptions,
+        readOnly: settings.readOnly,
       },
       promptOverride,
     };
-    localStorage.setItem(storageKey, JSON.stringify(toStore));
-  }, [chatSessionId, messages, promptOverride, settings, storageKey, tenantHost]);
+    localStorage.setItem(hydratedScope.key, JSON.stringify(toStore));
+  }, [chatSessionId, messages, promptOverride, settings, tenantHost, hydratedScope]);
 
   return {
     settings,
@@ -147,5 +139,6 @@ export const useAssistantSettings = ({
     setSystemPrompt,
     defaultSystemPrompt,
     profile,
+    ready: hydratedScope?.tenant === tenantHost,
   };
 };

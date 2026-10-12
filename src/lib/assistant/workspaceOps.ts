@@ -23,26 +23,8 @@ import type {
   SharedProjectSnapshot,
   UiSnapshot,
 } from './types';
-import { normalizeAclEndpointsValue } from './aclNormalization';
 import { AssistantToolContext, toSharedAccessUser } from './toolContext';
-
-export const ensureAclEndpoint = async (tenant: Tenant, routePath: string) => {
-  const endpoints = normalizeAclEndpointsValue(tenant.aclEndpoints) as Record<
-    string,
-    { read?: string[]; write?: string[]; edit?: string[]; delete?: string[]; allowAnonymous?: boolean }
-  >;
-  if (endpoints[routePath]) return;
-  endpoints[routePath] = {
-    read: [],
-    write: [],
-    edit: [],
-    delete: [],
-    allowAnonymous: false,
-  };
-  tenant.aclEndpoints = endpoints as Tenant['aclEndpoints'];
-  const tenantRepo = CoreDataSource.getRepository(Tenant);
-  await tenantRepo.save(tenant);
-};
+export { ensureAclEndpoint } from './endpoint-acl';
 
 export const snapshotModule = (mod: ModuleEntity): ModuleSnapshot => ({
   id: mod.id,

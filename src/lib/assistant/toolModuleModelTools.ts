@@ -116,7 +116,7 @@ export const buildModuleModelTools = (ctx: AssistantToolContext) => {
         draftVersion: generateVersion(),
       });
       await repo.save(mod);
-      await ensureAclEndpoint(ctx.tenant, routePath);
+      await ensureAclEndpoint(ctx.tenant, routePath, ctx.changes);
       ctx.changes.push({ kind: 'module', action: 'create', after: snapshotModule(mod) });
       return snapshotModule(mod);
     },
@@ -174,7 +174,7 @@ export const buildModuleModelTools = (ctx: AssistantToolContext) => {
       mod.fileExtension = nextExt;
       mod.draftVersion = generateVersion();
       await repo.save(mod);
-      await ensureAclEndpoint(ctx.tenant, nextRoute);
+      await ensureAclEndpoint(ctx.tenant, nextRoute, ctx.changes);
       ctx.changes.push({
         kind: 'module',
         action: 'update',

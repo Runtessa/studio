@@ -1,0 +1,160 @@
+.markdown {
+  min-width: 0;
+  font-size: 13px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+.markdown > :first-child {
+  margin-top: 0;
+}
+.markdown > :last-child {
+  margin-bottom: 0;
+}
+.markdown p {
+  margin: 0.7em 0;
+}
+.markdown h1,
+.markdown h2,
+.markdown h3,
+.markdown h4,
+.markdown h5,
+.markdown h6 {
+  margin: 1.2em 0 0.45em;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.markdown h1 {
+  font-size: 1.3em;
+}
+.markdown h2 {
+  font-size: 1.17em;
+}
+.markdown h3,
+.markdown h4,
+.markdown h5,
+.markdown h6 {
+  font-size: 1em;
+}
+.markdown strong {
+  font-weight: 600;
+}
+.markdown ul,
+.markdown ol {
+  margin: 0.7em 0;
+  padding-left: 1.5em;
+}
+.markdown ul {
+  list-style: disc;
+}
+.markdown ol {
+  list-style: decimal;
+}
+.markdown li {
+  padding-left: 0.15em;
+  margin: 0.3em 0;
+}
+.markdown li > p {
+  margin: 0.35em 0;
+}
+.markdown li > ul,
+.markdown li > ol {
+  margin: 0.3em 0;
+}
+.markdown blockquote {
+  border-left: 2px solid rgb(var(--color-border-subtle));
+  margin: 0.8em 0;
+  padding: 0.1em 0 0.1em 0.85em;
+  color: rgb(var(--color-text-muted));
+}
+.markdown hr {
+  border: 0;
+  border-top: 1px solid rgb(var(--color-border-subtle));
+  margin: 1.2em 0;
+}
+.markdown a {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.markdown a:hover {
+  opacity: 0.8;
+}
+.markdown :not(pre) > code {
+  background: rgb(var(--color-surface-muted));
+  border-radius: 4px;
+  padding: 0.15em 0.35em;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.9em;
+  white-space: break-spaces;
+}
+.codeBlock {
+  min-width: 0;
+  overflow: hidden;
+  margin: 1em 0;
+  border: 1px solid rgb(var(--color-border-subtle));
+  border-radius: 7px;
+  background: rgb(var(--color-bg-surface));
+}
+.codeHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid rgb(var(--color-border-subtle));
+  color: rgb(var(--color-text-muted));
+  font-size: 11px;
+  line-height: 1.4;
+}
+.codeHeader button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px;
+}
+.codeHeader button:hover {
+  color: rgb(var(--color-text-primary));
+}
+.codeBlock pre {
+  margin: 0;
+  padding: 12px;
+  overflow: auto;
+  max-height: 420px;
+  white-space: pre;
+  overflow-wrap: normal;
+  font:
+    12px/1.6 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Consolas,
+    monospace;
+}
+.tableScroll {
+  max-width: 100%;
+  overflow-x: auto;
+  margin: 1em 0;
+}
+.tableScroll table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 12px;
+}
+.tableScroll th,
+.tableScroll td {
+  border: 1px solid rgb(var(--color-border-subtle));
+  text-align: left;
+  padding: 7px 9px;
+  vertical-align: top;
+}
+.tableScroll th {
+  font-weight: 600;
+  background: rgb(var(--color-bg-surface));
+}
+.markdown :global(.task-list-item) {
+  list-style: none;
+}
+.markdown input[type='checkbox'] {
+  margin: 0 0.45em 0 -1.25em;
+}
+.imageLabel {
+  color: rgb(var(--color-text-muted));
+}
