@@ -1,3 +1,4 @@
+import type { AttachmentContent } from '@/lib/assistant/attachment-types';
 import {
   buildOperationsFromDirectives,
   formatCodexProgressLine,
@@ -83,11 +84,14 @@ type ResolvePlanInput = {
   userName?: string;
   chatId: string;
   messages: Array<{ role: string; content: string }>;
+  attachments?: AttachmentContent[];
   contextText: string;
   systemPrompt: string;
   model?: string;
   workspace: WorkspaceContext;
   session: AgentWorkspaceSession;
+  signal?: AbortSignal;
+  onDelta?: (delta: string) => void;
 };
 
 export const resolveCodexPlan = async (
@@ -101,6 +105,7 @@ export const resolveCodexPlan = async (
     userName: input.userName,
     chatId: input.chatId,
     messages: input.messages,
+    attachments: input.attachments,
     contextText: input.contextText,
     session: input.session,
     systemPrompt: input.systemPrompt,
@@ -111,6 +116,8 @@ export const resolveCodexPlan = async (
       onProgress?.(formatted.text);
     },
     onWorkspaceFile,
+    signal: input.signal,
+    onDelta: input.onDelta,
   });
 
   onProgress?.('[codex] response received, resolving operations...');
@@ -160,6 +167,7 @@ export const resolveCodexPlan = async (
         ...input.messages,
         { role: 'user', content: buildCodexRecoveryPrompt(latestPrompt, input.session) },
       ],
+      attachments: input.attachments,
       contextText: input.contextText,
       session: input.session,
       systemPrompt: input.systemPrompt,
@@ -170,6 +178,8 @@ export const resolveCodexPlan = async (
         onProgress?.(formatted.text);
       },
       onWorkspaceFile,
+      signal: input.signal,
+      onDelta: input.onDelta,
     });
     codexMessage = recovery.message;
     plan = parseCodexPlan(codexMessage);

@@ -17,6 +17,8 @@ type PersistedArtifact = {
 type PersistedRunPayload = {
   runId: string;
   tenantId: string;
+  chatId?: string;
+  userId?: string;
   runName?: string;
   status: 'completed' | 'failed';
   message: string;
@@ -37,6 +39,8 @@ type PersistedRunPayload = {
 
 export type AssistantRunSummary = {
   runId: string;
+  chatId?: string;
+  userId?: string;
   runName?: string;
   status: 'running' | 'completed' | 'failed';
   createdAt: string;
@@ -58,6 +62,8 @@ const runEventsStreamKey = (tenantId: string, runId: string) =>
   `assistant:run:${tenantId}:${runId}:stream`;
 const tenantEventsStreamKey = (tenantId: string) => `assistant:tenant:${tenantId}:stream`;
 const runsIndexKey = (tenantId: string) => `assistant:runs:${tenantId}`;
+const userRunsIndexKey = (tenantId: string, userId: string) => `assistant:runs:${tenantId}:user:${userId}`;
+const checkpointKey = (tenantId: string, runId: string) => `assistant:run:${tenantId}:${runId}:changes`;
 const idempotencyKey = (tenantId: string, key: string) =>
   `assistant:idempotency:${tenantId}:${key}`;
 
@@ -155,11 +161,13 @@ const buildMergedArtifacts = (
   ];
 };
 
-export const buildAssistantIdempotencyKey = (messages: unknown, contextText: string) =>
+export const buildAssistantIdempotencyKey = (messages: unknown, contextText: string,
+  identity?: { userId: string | number; chatId: string; requestId?: string }) =>
   createHash('sha256')
     .update(JSON.stringify(messages))
     .update('\n')
-    .update(contextText)
+    .update(identity?.requestId ? '' : contextText)
+    .update(identity ? JSON.stringify(identity) : '')
     .digest('hex');
 
 export const reserveAssistantRun = async (
@@ -188,7 +196,7 @@ export const reserveAssistantRun = async (
 export const startAssistantRun = async (
   tenantId: string,
   runId: string,
-  options?: { idempotency?: string; runName?: string }
+  options?: { idempotency?: string; runName?: string; chatId?: string; userId?: string }
 ) => {
   const now = new Date().toISOString();
   const key = runHashKey(tenantId, runId);
@@ -202,6 +210,8 @@ export const startAssistantRun = async (
   await redis.hset(runHashKey(tenantId, runId), {
     runId,
     tenantId,
+    chatId: options?.chatId || '',
+    userId: options?.userId || '',
     runName,
     status: 'running',
     createdAt,
@@ -215,7 +225,17 @@ export const startAssistantRun = async (
   await redis.expire(key, RUN_RETENTION_SECONDS);
   await redis.zadd(runsIndexKey(tenantId), Date.now(), runId);
   await redis.expire(runsIndexKey(tenantId), RUN_RETENTION_SECONDS);
+  if (options?.userId) {
+    await redis.zadd(userRunsIndexKey(tenantId, options.userId), Date.now(), runId);
+    await redis.expire(userRunsIndexKey(tenantId, options.userId), RUN_RETENTION_SECONDS);
+  }
 };
+
+export const checkpointAssistantChanges = (tenantId: string, runId: string, changes: AssistantChange[]) =>
+  redis.set(checkpointKey(tenantId, runId), JSON.stringify(changes), 'EX', RUN_RETENTION_SECONDS);
+
+export const getAssistantChangeCheckpoint = async (tenantId: string, runId: string): Promise<AssistantChange[]> =>
+  JSON.parse(await redis.get(checkpointKey(tenantId, runId)) || '[]');
 
 export const appendAssistantEvent = async (
   tenantId: string,
@@ -280,6 +300,15 @@ export const completeAssistantRun = async (
   await redis.expire(key, RUN_RETENTION_SECONDS);
   await redis.zadd(runsIndexKey(payload.tenantId), Date.now(), payload.runId);
   await redis.expire(runsIndexKey(payload.tenantId), RUN_RETENTION_SECONDS);
+  if (payload.chatId && payload.userId) {
+    await redis.set(`assistant:chat:${payload.tenantId}:${encodeURIComponent(payload.userId)}:${encodeURIComponent(payload.chatId)}:latest`,
+      payload.runId, 'EX', RUN_RETENTION_SECONDS);
+  }
+};
+
+export const getLatestAssistantRun = async (tenantId: string, userId: string | number, chatId: string) => {
+  const runId = await redis.get(`assistant:chat:${tenantId}:${encodeURIComponent(String(userId))}:${encodeURIComponent(chatId)}:latest`);
+  return runId ? getAssistantRun(tenantId, runId) : null;
 };
 
 export const getAssistantRun = async (tenantId: string, runId: string) => {
@@ -296,6 +325,8 @@ export const getAssistantRunSummary = async (
   if (!data || !Object.keys(data).length) return null;
   return {
     runId: data.runId || runId,
+    chatId: data.chatId || undefined,
+    userId: data.userId || undefined,
     runName: data.runName || undefined,
     status: (data.status as AssistantRunSummary['status']) || 'running',
     createdAt: data.createdAt || '',
@@ -310,11 +341,11 @@ export const getAssistantRunSummary = async (
 
 export const listAssistantRuns = async (
   tenantId: string,
-  options?: { limit?: number; offset?: number }
+  options?: { limit?: number; offset?: number; userId?: string }
 ) => {
   const limit = Math.max(1, Math.min(options?.limit ?? 20, 100));
   const offset = Math.max(0, options?.offset ?? 0);
-  const ids = await redis.zrevrange(runsIndexKey(tenantId), offset, offset + limit - 1);
+  const ids = await redis.zrevrange(options?.userId ? userRunsIndexKey(tenantId, options.userId) : runsIndexKey(tenantId), offset, offset + limit - 1);
   if (!ids.length) return [];
   const summaries = await Promise.all(ids.map((id) => getAssistantRunSummary(tenantId, id)));
   return summaries.filter(Boolean) as AssistantRunSummary[];
@@ -329,8 +360,10 @@ export const deleteAssistantRun = async (tenantId: string, runId: string) => {
     redis.del(runEventsListKey(tenantId, runId)),
     redis.del(runEventsStreamKey(tenantId, runId)),
     redis.del(key),
+    redis.del(checkpointKey(tenantId, runId)),
     redis.zrem(runsIndexKey(tenantId), runId),
   ];
+  if (data?.userId) deletions.push(redis.zrem(userRunsIndexKey(tenantId, data.userId), runId));
   if (idempotency) {
     deletions.push(redis.del(idempotencyKey(tenantId, idempotency)));
   }

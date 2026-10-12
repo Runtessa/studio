@@ -1,49 +1,10 @@
-import { useRef, useState } from 'react';
-import type { Dispatch, SetStateAction } from 'react';
-import type { AssistantChange } from '@/lib/assistant/types';
-import type { AssistantRunConflict, AssistantRunEvent } from '@/lib/assistant/orchestrator';
-import {
-  createId,
-  mapRunSteps,
-  mergeChanges,
-  mergeLiveWorkspaceFiles,
-  mergeProgressLines,
-  mergeSteps,
-  normalizeAssistantMessage,
-  stripMetaLogLines,
-  formatRunStep,
-  type AiMessage,
-  type AiSettings,
-  type ApiStreamFetch,
-  type LiveWorkspaceFileUpdate,
-} from './shared';
-
-export type ActiveFileContext = {
-  id: string;
-  name: string;
-  meta?: unknown;
-  content: string;
-} | null;
-
-type Params = {
-  apiStreamFetch: ApiStreamFetch;
-  chatSessionId: string;
-  input: string;
-  setInput: Dispatch<SetStateAction<string>>;
-  messages: AiMessage[];
-  setMessages: Dispatch<SetStateAction<AiMessage[]>>;
-  activeFileContext: ActiveFileContext;
-  aclConfig: unknown;
-  settings: AiSettings;
-  systemPrompt: string;
-  onWorkspaceRefresh: () => void;
-  onLiveWorkspaceFileUpdate?: (file: LiveWorkspaceFileUpdate) => void;
-  onLiveWorkspaceRunStateChange?: (state: 'committed' | 'reverted') => void;
-  loadRuns: () => Promise<void> | void;
-  success: (message: string) => void;
-  showError: (message: string) => void;
-};
-
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { createId, type AiMessage } from './shared';
+import { performAssistantRequest } from './performAssistantRequest';
+import { buildChatPayload, type AssistantChatParams } from './assistantChatContext';
+export type { ActiveFileContext } from './assistantChatContext';
+import { useRecoverRuns } from './useRecoverRuns';
+import type { AssistantAttachment } from '@/lib/assistant/attachment-types';
 const isAbortError = (err: unknown) => {
   if (!err) return false;
   if (typeof DOMException !== 'undefined' && err instanceof DOMException) {
@@ -54,14 +15,21 @@ const isAbortError = (err: unknown) => {
 };
 
 export const useAssistantChat = ({
+  ready = true,
+  apiFetch,
   apiStreamFetch,
   chatSessionId,
   input,
+  attachments = [],
+  attachmentsBusy = false,
+  onAttachmentsSent,
   setInput,
   messages,
   setMessages,
   activeFileContext,
   aclConfig,
+  openFileContexts,
+  getEditorSelection,
   settings,
   systemPrompt,
   onWorkspaceRefresh,
@@ -70,25 +38,32 @@ export const useAssistantChat = ({
   loadRuns,
   success,
   showError,
-}: Params) => {
+}: AssistantChatParams) => {
   const [sending, setSending] = useState(false);
   const [pendingAssistantId, setPendingAssistantId] = useState<string | null>(null);
 
   const streamAbortRef = useRef<AbortController | null>(null);
   const stoppingRef = useRef(false);
+  const activeRunIdRef = useRef('');
+  useEffect(() => () => streamAbortRef.current?.abort(), [chatSessionId]);
+  useRecoverRuns({ sending, chatSessionId, messages, apiFetch, setMessages, onWorkspaceRefresh, loadRuns });
 
-  const sendMessage = async (overrideText?: string) => {
-    if (sending) return;
-    const prompt = typeof overrideText === 'string' ? overrideText.trim() : input.trim();
+  const sendMessage = async (overrideText?: string, overrideAttachments?: AssistantAttachment[]) => {
+    if (sending || !ready || attachmentsBusy) return;
+    const files = overrideAttachments ?? attachments;
+    const prompt = (typeof overrideText === 'string' ? overrideText.trim() : input.trim()) || (files.length ? 'Review the attached files.' : '');
     if (!prompt) return;
     const abortController = new AbortController();
     streamAbortRef.current = abortController;
     stoppingRef.current = false;
+    activeRunIdRef.current = '';
+    onLiveWorkspaceRunStateChange?.('started');
 
     const userMessage: AiMessage = {
       id: `user-${createId()}`,
       role: 'user',
       content: prompt,
+      ...(files.length ? { attachments: files } : {}),
       createdAt: new Date().toISOString(),
     };
     const assistantId = `assistant-${createId()}`;
@@ -96,261 +71,65 @@ export const useAssistantChat = ({
       id: assistantId,
       role: 'assistant',
       content: '',
+      status: 'running',
       createdAt: new Date().toISOString(),
     };
     const nextMessages = [...messages, userMessage, assistantSeed];
     setMessages(nextMessages);
     if (typeof overrideText !== 'string') {
       setInput('');
+      onAttachmentsSent?.();
     }
     setSending(true);
     setPendingAssistantId(assistantId);
 
     try {
-      const payload = {
-        messages: nextMessages.map((msg) => ({
-          role: msg.role,
-          content: msg.content,
-        })),
-        chatId: chatSessionId,
-        context: {
-          activeFile: activeFileContext,
-          acl: aclConfig ?? undefined,
-          watchPreviewExceptions: settings.watchPreviewExceptions,
-          previewExceptionsLimit: 20,
+      const payload = buildChatPayload(
+        {
+          messages,
+          chatSessionId,
+          settings,
+          systemPrompt,
+          openFileContexts,
+          getEditorSelection,
+          activeFileContext,
+          aclConfig,
         },
-        stream: true,
-        systemPrompt: systemPrompt || undefined,
-        config: settings.allowClientConfig
-          ? {
-              model: settings.model,
-            }
-          : undefined,
-      };
-      const res = await apiStreamFetch('/api/assistant/respond', {
-        method: 'POST',
+        userMessage,
+        assistantId,
+      );
+      await performAssistantRequest({
+        apiStreamFetch,
         body: payload,
         signal: abortController.signal,
+        patch: (update) =>
+          setMessages((current) =>
+            current.map((message) => (message.id === assistantId ? update(message) : message)),
+          ),
+        onRunId: (id) => {
+          activeRunIdRef.current = id;
+        },
+        onLiveWorkspaceFileUpdate,
+        onLiveWorkspaceRunStateChange,
+        onWorkspaceRefresh,
+        loadRuns,
+        success,
+        showError,
       });
-
-      const contentType = res.headers.get('content-type') || '';
-      if (!res.body || !contentType.includes('text/event-stream')) {
-        const data = await res.json();
-        const steps = mapRunSteps(data.events ?? []);
-        setMessages((prev) =>
-          prev.map((msg) =>
-            msg.id === assistantId
-              ? {
-                  ...msg,
-                  content: normalizeAssistantMessage(data.message || 'Done.'),
-                  changes: data.changes ?? [],
-                  events: data.events ?? [],
-                  steps,
-                  conflicts: data.conflicts ?? [],
-                }
-              : msg,
-          ),
-        );
-        if (data.changes?.length) {
-          onWorkspaceRefresh();
-        }
-        await loadRuns();
-        success('Assistant updated the workspace');
-        return;
-      }
-
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-      let finalChanges: AssistantChange[] = [];
-      let finalEvents: AssistantRunEvent[] = [];
-      let finalConflicts: AssistantRunConflict[] = [];
-      let sawWorkspaceMutation = false;
-      let streamErrorMessage = '';
-
-      const appendContent = (text: string) => {
-        const cleaned = stripMetaLogLines(text);
-        if (!cleaned.trim()) return;
-        setMessages((prev) =>
-          prev.map((msg) =>
-            msg.id === assistantId ? { ...msg, content: `${msg.content}${cleaned}` } : msg,
-          ),
-        );
-      };
-
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        let idx = buffer.indexOf('\n\n');
-        while (idx !== -1) {
-          const raw = buffer.slice(0, idx);
-          buffer = buffer.slice(idx + 2);
-          const dataLines = raw
-            .split('\n')
-            .filter((line) => line.startsWith('data:'))
-            .map((line) => line.replace(/^data:\s?/, ''));
-          if (dataLines.length === 0) {
-            idx = buffer.indexOf('\n\n');
-            continue;
-          }
-          const payloadText = dataLines.join('\n').trim();
-          if (!payloadText) {
-            idx = buffer.indexOf('\n\n');
-            continue;
-          }
-          try {
-            const event = JSON.parse(payloadText) as {
-              type?: string;
-              content?: string;
-              line?: string;
-              message?: string;
-              changes?: AssistantChange[];
-              change?: AssistantChange;
-              file?: LiveWorkspaceFileUpdate;
-              event?: AssistantRunEvent;
-              events?: AssistantRunEvent[];
-              conflicts?: AssistantRunConflict[];
-            };
-            if (event.type === 'delta' && event.content) {
-              appendContent(event.content);
-            }
-            if (event.type === 'progress' && event.line) {
-              setMessages((prev) =>
-                prev.map((msg) =>
-                  msg.id === assistantId
-                    ? {
-                        ...msg,
-                        progress: mergeProgressLines(msg.progress, event.line || ''),
-                      }
-                    : msg,
-                ),
-              );
-            }
-            if (event.type === 'run_event' && event.event) {
-              const step = formatRunStep(event.event as AssistantRunEvent);
-              setMessages((prev) =>
-                prev.map((msg) =>
-                  msg.id === assistantId
-                    ? {
-                        ...msg,
-                        events: [...(msg.events ?? []), event.event as AssistantRunEvent],
-                        steps: mergeSteps(msg.steps, step ? [step] : []),
-                      }
-                    : msg,
-                ),
-              );
-            }
-            if (event.type === 'change' && event.change) {
-              const change = event.change as AssistantChange;
-              setMessages((prev) =>
-                prev.map((msg) =>
-                  msg.id === assistantId
-                    ? {
-                        ...msg,
-                        changes: mergeChanges(msg.changes, [change]),
-                      }
-                    : msg,
-                ),
-              );
-            }
-            if (event.type === 'workspace_file' && event.file?.path) {
-              const file = {
-                path: String(event.file.path || '').trim(),
-                action:
-                  event.file.action === 'create' || event.file.action === 'delete'
-                    ? event.file.action
-                    : 'edit',
-                content: typeof event.file.content === 'string' ? event.file.content : undefined,
-              } satisfies LiveWorkspaceFileUpdate;
-              sawWorkspaceMutation = true;
-              setMessages((prev) =>
-                prev.map((msg) =>
-                  msg.id === assistantId
-                    ? {
-                        ...msg,
-                        liveFiles: mergeLiveWorkspaceFiles(msg.liveFiles, file),
-                      }
-                    : msg,
-                ),
-              );
-              onLiveWorkspaceFileUpdate?.(file);
-            }
-            if (event.type === 'error' && event.message) {
-              streamErrorMessage = String(event.message || '').trim();
-              setMessages((prev) =>
-                prev.map((msg) =>
-                  msg.id === assistantId
-                    ? {
-                        ...msg,
-                        progress: mergeProgressLines(msg.progress, `[error] ${event.message}`),
-                      }
-                    : msg,
-                ),
-              );
-              appendContent(`\n${event.message}\n`);
-            }
-            if (event.type === 'done') {
-              if (event.message) {
-                setMessages((prev) =>
-                  prev.map((msg) => {
-                    if (msg.id !== assistantId) return msg;
-                    const existing = String(msg.content || '').trim();
-                    const incoming = normalizeAssistantMessage(String(event.message || ''));
-                    if (!incoming) return msg;
-                    if (!existing) {
-                      return { ...msg, content: incoming };
-                    }
-                    if (existing.includes(incoming)) {
-                      return msg;
-                    }
-                    return {
-                      ...msg,
-                      content: `${existing}\n\n${incoming}`,
-                    };
-                  }),
-                );
-              }
-              finalChanges = event.changes ?? [];
-              finalEvents = event.events ?? [];
-              finalConflicts = event.conflicts ?? [];
-            }
-          } catch {
-            // ignore malformed chunk
-          }
-          idx = buffer.indexOf('\n\n');
-        }
-      }
-
-      setMessages((prev) =>
-        prev.map((msg) =>
-          msg.id === assistantId
-            ? {
-                ...msg,
-                changes: finalChanges.length
-                  ? mergeChanges(msg.changes, finalChanges)
-                  : msg.changes ?? [],
-                events: finalEvents.length ? finalEvents : msg.events,
-                conflicts: finalConflicts.length ? finalConflicts : msg.conflicts,
-              }
-            : msg,
-        ),
-      );
-      if (sawWorkspaceMutation) {
-        onLiveWorkspaceRunStateChange?.(streamErrorMessage ? 'reverted' : 'committed');
-      }
-      if (finalChanges.length) {
-        onWorkspaceRefresh();
-      }
-      await loadRuns();
-      if (!streamErrorMessage) {
-        success('Assistant updated the workspace');
-      }
     } catch (err) {
       onLiveWorkspaceRunStateChange?.('reverted');
-      if (!stoppingRef.current && !isAbortError(err)) {
-        showError((err as Error).message || 'Assistant request failed');
-      }
+      const interrupted = stoppingRef.current || isAbortError(err);
+      const content = interrupted
+        ? 'Request interrupted. Checking the recorded result.'
+        : (err as Error).message || 'Assistant request failed';
+      setMessages((current) =>
+        current.map((message) =>
+          message.id === assistantId
+            ? { ...message, status: activeRunIdRef.current ? 'running' : 'failed', content }
+            : message,
+        ),
+      );
+      if (!interrupted) showError(content);
     } finally {
       streamAbortRef.current = null;
       stoppingRef.current = false;
@@ -362,7 +141,11 @@ export const useAssistantChat = ({
   const stopMessage = () => {
     if (!sending) return;
     stoppingRef.current = true;
-    streamAbortRef.current?.abort();
+    if (apiFetch && activeRunIdRef.current) {
+      void apiFetch(`/api/assistant/runs/${encodeURIComponent(activeRunIdRef.current)}/stop`, {
+        method: 'POST',
+      }).catch(() => streamAbortRef.current?.abort());
+    } else streamAbortRef.current?.abort();
   };
 
   const getRetryPrompt = (messageId: string) => {
@@ -379,16 +162,16 @@ export const useAssistantChat = ({
     return '';
   };
 
-  const handleCopyMessage = async (text: string) => {
-    const value = String(text || '').trim();
-    if (!value) return;
+  const handleCopyMessage = useCallback(async (text: string) => {
+    const value = String(text || '');
+    if (!value.trim()) return;
     try {
       await navigator.clipboard.writeText(value);
       success('Copied');
     } catch {
       showError('Copy failed');
     }
-  };
+  }, [success, showError]);
 
   const handleRetryMessage = async (messageId: string) => {
     if (sending) return;
@@ -397,7 +180,9 @@ export const useAssistantChat = ({
       showError('No prompt available to retry');
       return;
     }
-    await sendMessage(retryPrompt);
+    const index = messages.findIndex(message => message.id === messageId);
+    const source = [...messages.slice(0, index + 1)].reverse().find(message => message.role === 'user');
+    await sendMessage(retryPrompt, source?.attachments ?? []);
   };
 
   return {

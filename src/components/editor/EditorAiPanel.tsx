@@ -1,3 +1,6 @@
+import { useAttachments } from './ai-panel/useAttachments';
+import { capturePreview, type PreviewSnapshot } from './ai-panel/capturePreview';
+import { PreviewAnnotator } from './ai-panel/PreviewAnnotator';
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useToast } from "@/components/ui/Toast";
 import { SettingsModals } from "./ai-panel/SettingsModals";
@@ -8,6 +11,7 @@ import { RunsPanel } from "./ai-panel/RunsPanel";
 import { useAssistantRuns } from "./ai-panel/useAssistantRuns";
 import { useAssistantChat } from "./ai-panel/useAssistantChat";
 import { useAssistantSettings } from "./ai-panel/useAssistantSettings";
+import {editorBuffer} from './ai-panel/editorBuffers';
 import {
   STORAGE_PREFIX,
   createChatSessionId,
@@ -19,7 +23,10 @@ export function EditorAiPanel({
   apiFetch,
   apiStreamFetch,
   tenantHost,
+  getPreviewSource,
   activeFile,
+  openFiles = [],
+  getEditorSelection,
   fileContents,
   savedContents,
   aclConfig,
@@ -47,6 +54,7 @@ export function EditorAiPanel({
     setSystemPrompt,
     defaultSystemPrompt,
     profile,
+    ready: assistantReady,
   } = useAssistantSettings({
     apiFetch,
     tenantHost,
@@ -57,6 +65,20 @@ export function EditorAiPanel({
     showError,
     storagePrefix: STORAGE_PREFIX,
   });
+  const attachments = useAttachments(apiFetch, `${tenantHost}:${chatSessionId}`, showError);
+  const [snapshot, setSnapshot] = useState<PreviewSnapshot | null>(null);
+  const [capturing, setCapturing] = useState(false);
+  const captureScope = useRef(0);
+  useEffect(() => { captureScope.current++; setSnapshot(null); setCapturing(false); return () => { captureScope.current++; }; }, [tenantHost, chatSessionId]);
+  const annotatePreview = async () => {
+    const source = getPreviewSource?.();
+    if (!source) { showError('Open an app in Preview first, then choose Annotate preview.'); return; }
+    const current = captureScope.current;
+    setCapturing(true);
+    try { const image = await capturePreview(source); if (current === captureScope.current) setSnapshot(image); }
+    catch (error) { if (current === captureScope.current) showError((error as Error).message); }
+    finally { if (current === captureScope.current) setCapturing(false); }
+  };
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
   const { runs, loadingRuns, loadRuns, inspectRun, deleteRun } = useAssistantRuns({
@@ -93,12 +115,7 @@ export function EditorAiPanel({
   const activeFileContext = useMemo(() => {
     if (!activeFile) return null;
     const content = fileContents[activeFile.id] ?? savedContents[activeFile.id] ?? "";
-    return {
-      id: activeFile.id,
-      name: activeFile.name,
-      meta: activeFile.meta ?? undefined,
-      content,
-    };
+    return {...editorBuffer(activeFile,content),content};
   }, [activeFile, fileContents, savedContents]);
 
   const {
@@ -110,13 +127,21 @@ export function EditorAiPanel({
     handleCopyMessage,
     handleRetryMessage,
   } = useAssistantChat({
+    ready: assistantReady,
+    apiFetch,
     apiStreamFetch,
     chatSessionId,
     input,
+    attachments: attachments.pending.map(item => item.attachment),
+    attachmentsBusy: attachments.uploading || capturing || Boolean(snapshot),
+    onAttachmentsSent: attachments.consume,
     setInput,
     messages,
     setMessages,
     activeFileContext,
+    openFileContexts:openFiles.map(file=>editorBuffer(file,
+      fileContents[file.id] !== savedContents[file.id] ? fileContents[file.id] : undefined)),
+    getEditorSelection,
     aclConfig,
     settings,
     systemPrompt,
@@ -137,6 +162,9 @@ export function EditorAiPanel({
       setLoadingModels(true);
       const response = await apiFetch('/api/assistant/models');
       setModels(response.models ?? []);
+      if (response.defaultModel) {
+        setSettings((prev) => ({ ...prev, model: prev.model || response.defaultModel }));
+      }
     } catch (err) {
       showError((err as Error).message || 'Failed to load models');
     } finally {
@@ -164,7 +192,7 @@ export function EditorAiPanel({
           msg.id === message.id ? { ...msg, rolledBack: true } : msg,
         ),
       );
-      onWorkspaceRefresh();
+      await onWorkspaceRefresh(message.changes);
       loadRuns();
       success('Rolled back assistant changes');
     } catch (err) {
@@ -214,13 +242,14 @@ export function EditorAiPanel({
               sending ? 'bg-[#0b5b96] animate-pulse' : 'bg-gray-500'
             }`}
           />
-          {sending ? 'Thinking' : 'Ready'}
+          {sending ? 'Thinking' : 'Idle'}
         </div>
       </div>
       <div className="flex flex-wrap items-center gap-2 border-b border-[#2a2d2e] bg-[#18191b] px-3 py-2 text-[10px] text-gray-400">
         <span className="rounded-full border border-[#2a2d2e] bg-[#111214] px-2 py-0.5 text-gray-200">
           {profile.label || 'Codex'}
         </span>
+        <span>{settings.model || profile.model || 'Codex default'}</span>
         <span>tenant {tenantHost || 'none'}</span>
         <span>file {activeFileContext?.name || 'none'}</span>
         <span>preview {settings.watchPreviewExceptions ? 'watching exceptions' : 'watch off'}</span>
@@ -270,6 +299,7 @@ export function EditorAiPanel({
             <MessageBubble
               key={msg.id}
               msg={msg}
+              apiFetch={apiFetch}
               sending={sending}
               pendingAssistantId={pendingAssistantId}
               openChangeDiffKeys={openChangeDiffKeys}
@@ -286,6 +316,15 @@ export function EditorAiPanel({
       </div>
 
       <ChatFooter
+        ready={assistantReady}
+        attachments={attachments.pending}
+        uploading={attachments.uploading}
+        capturing={capturing}
+        onFiles={files => { void attachments.addFiles(files); }}
+        onRemoveAttachment={attachments.remove}
+        onAnnotatePreview={() => void annotatePreview()}
+        readOnly={settings.readOnly}
+        onReadOnlyChange={readOnly => setSettings(current => ({ ...current, readOnly }))}
         activeMainTab={activeMainTab}
         input={input}
         sending={sending}
@@ -302,6 +341,9 @@ export function EditorAiPanel({
         onOpenChat={() => setActiveMainTab('chats')}
       />
 
+      {snapshot ? <PreviewAnnotator snapshot={snapshot} onCancel={() => setSnapshot(null)} onApply={async marks => {
+        await attachments.addPreview(snapshot, marks); setSnapshot(null); setActiveMainTab('chats');
+      }} /> : null}
       <SettingsModals
         settingsOpen={settingsOpen}
         setSettingsOpen={setSettingsOpen}

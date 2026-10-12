@@ -28,7 +28,7 @@ export const createRunEvent = (
 });
 
 export const promptLooksLikeMutation = (prompt: string) =>
-  /\b(create|edit|update|delete|remove|add|implement|fix|refactor|build|redesign|design|change|modify|improve|migrate)\b/i.test(
+  !/\bread[ -]only\b/i.test(prompt) && /\b(create|edit|update|delete|remove|add|implement|fix|refactor|build|redesign|design|change|modify|improve|migrate)\b/i.test(
     prompt,
   );
 
@@ -238,7 +238,8 @@ export const buildCoverageConflicts = (
       createConflict(`Operation failures: ${opErrors.join(' | ')}`, 'high', relatedNodeIds),
     );
   }
-  const looksLikeMutation = promptLooksLikeMutation(session.task.objective || '');
+  const looksLikeMutation = session.task.expectations.mode !== 'read-only' &&
+    promptLooksLikeMutation(session.task.objective || '');
   if (!looksLikeMutation) return conflicts;
   if (!changes.length && !directWorkspaceEdits.length) {
     conflicts.push(

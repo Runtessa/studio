@@ -1,11 +1,9 @@
 import { buildAssistantTools } from '@/lib/assistant/tools';
 import { listPreviewExceptions } from '@/lib/assistant/preview-exceptions-store';
-import { getAssistantRun } from '@/lib/assistant/state-store';
+import { getLatestAssistantRun } from '@/lib/assistant/state-store';
 import type { IdePermission } from '@/lib/rbac';
 import {
   buildAgentWorkspaceSession,
-  buildContextText,
-  createRunId,
   executeTool,
   resolvePreviewExceptionsLimit,
   shouldWatchPreviewFromPrompt,
@@ -13,8 +11,13 @@ import {
 } from '@/lib/assistant/respond-runtime';
 import type { AssistantChange } from '@/lib/assistant/types';
 import type { Tenant } from '@idp/shared';
+import type {EditorBuffer,EditorSelection} from './respond-runtime/editor-context';
+import { renderAgentWorkspaceSession } from './respond-runtime/agent-session';
 
 export type RawAssistantContext = {
+  readOnly?: boolean;
+  openFiles?: EditorBuffer[];
+  selection?: EditorSelection | null;
   watchPreviewExceptions?: unknown;
   previewExceptionsLimit?: unknown;
   activeFile?: {
@@ -74,8 +77,7 @@ export const buildAssistantRequestRuntime = async ({
     ? await listPreviewExceptions(tenant.id, String(user.id), previewExceptionsLimit)
     : [];
 
-  const runId = createRunId(chatId);
-  const previousRun = await getAssistantRun(tenant.id, runId);
+  const previousRun = await getLatestAssistantRun(tenant.id, user.id, chatId);
 
   const normalizedWorkspace = {
     tenant: workspace.tenant ?? undefined,
@@ -113,14 +115,15 @@ export const buildAssistantRequestRuntime = async ({
     actor,
     activeFile: context?.activeFile ?? null,
     previousRun,
+    openFiles:Array.isArray(context?.openFiles) ? context.openFiles : [],
+    selection:context?.selection,
   });
 
-  const contextText = buildContextText(normalizedWorkspace, normalizedAcl, preview, actor, {
-    chatId,
-    messages,
-    activeFile: context?.activeFile ?? null,
-    previousRun,
-  });
+  if (context?.readOnly === true) {
+    session.task.expectations.mode = 'read-only';
+    session.task.expectations.reasons.push('user selected read-only mode');
+  }
+  const contextText = renderAgentWorkspaceSession(session);
 
   return {
     tools,

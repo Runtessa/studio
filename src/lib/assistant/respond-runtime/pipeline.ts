@@ -1,3 +1,4 @@
+import type { AttachmentContent } from '@/lib/assistant/attachment-types';
 import type { AssistantChange } from '@/lib/assistant/types';
 import type { AssistantRunEvent } from '@/lib/assistant/orchestrator';
 import { executeCodexOperations, type CodexOperation, type CodexPlan } from './codex-ops';
@@ -21,6 +22,7 @@ type ExecuteCodexPipelineInput = {
   userName?: string;
   chatId: string;
   messages: Array<{ role: string; content: string }>;
+  attachments?: AttachmentContent[];
   contextText: string;
   session: AgentWorkspaceSession;
   systemPrompt: string;
@@ -32,6 +34,9 @@ type ExecuteCodexPipelineInput = {
   onChange?: (change: AssistantChange) => void;
   onEvent?: (event: AssistantRunEvent) => void;
   onWorkspaceFile?: (event: WorkspaceFileEvent) => void;
+  signal?: AbortSignal;
+  onDelta?: (delta: string) => void;
+  beforeApply?: (operations: CodexOperation[]) => Promise<void>;
 };
 
 type ExecuteCodexPipelineResult = {
@@ -110,11 +115,14 @@ export const executeCodexPipeline = async (
           userName: input.userName,
           chatId: input.chatId,
           messages: currentMessages,
+          attachments: input.attachments,
           contextText: input.contextText,
           systemPrompt: input.systemPrompt,
           model: input.model,
           workspace: input.workspace,
           session: input.session,
+          signal: input.signal,
+          onDelta: input.onDelta,
         },
         progress,
         input.onWorkspaceFile,
@@ -133,7 +141,8 @@ export const executeCodexPipeline = async (
         });
       }
 
-      if (attempt === 0 && promptLooksLikeMutation(latestPrompt) && resolved.operations.length === 0) {
+      if (attempt === 0 && input.session.task.expectations.mode !== 'read-only' &&
+          promptLooksLikeMutation(latestPrompt) && resolved.operations.length === 0) {
         const missingOpsConflict: CodexConflict = {
           id:
             typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
@@ -147,6 +156,7 @@ export const executeCodexPipeline = async (
         conflictHistory.push(missingOpsConflict);
       }
 
+      input.signal?.throwIfAborted();
       const opResult =
         resolved.operations.length > 0
           ? await executeCodexOperations(
@@ -156,6 +166,7 @@ export const executeCodexPipeline = async (
               () => input.changes,
               input.onChange,
               (line) => progress(line),
+              { readOnly: input.session.task.expectations.mode === 'read-only', signal: input.signal, beforeApply: input.beforeApply },
             )
           : { executed: 0, mutationOps: 0, logs: [] as string[], errors: [] as string[] };
 
@@ -289,11 +300,13 @@ export const executeCodexPipeline = async (
       conflicts: [],
     };
   } catch (error) {
+    const stopped = input.signal?.aborted === true;
     const errorMessage =
       String((error as Error).message || '').trim() ||
       unresolvedConflicts.map((item) => item.message).filter(Boolean).slice(0, 3).join(' | ') ||
       'Codex execution failed';
-    const failureMessage = `Codex pipeline failed: ${errorMessage}`;
+    const reason = input.signal?.reason as { code?: string; message?: string } | undefined;
+    const failureMessage = stopped ? reason?.message || 'Request stopped.' : `Codex pipeline failed: ${errorMessage}`;
     emitEvent('RUN_FAILED', 'S4_PRODUCTION', {
       message: failureMessage,
     });
@@ -301,7 +314,7 @@ export const executeCodexPipeline = async (
     return {
       status: 'failed',
       message: failureMessage,
-      finishReason: 'codex-error',
+      finishReason: stopped ? reason?.code || 'codex-stopped' : (error as { code?: string }).code || 'codex-error',
       usage: undefined,
       events,
       changes: [...input.changes],

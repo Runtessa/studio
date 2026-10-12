@@ -1,0 +1,27 @@
+import type { AttachmentContent } from '@/lib/assistant/attachment-types';
+import type { NextApiRequest, NextApiResponse } from 'next';
+import type { AssistantChange } from './types';
+import type { AgentWorkspaceSession, WorkspaceContext } from './respond-runtime';
+export type CodexRunParams = {
+  req: NextApiRequest;
+  res: NextApiResponse;
+  tenantId: string;
+  userId: string | number;
+  userName?: string;
+  chatId: string;
+  runId: string;
+  runName: string;
+  idempotency: string;
+  stream: boolean;
+  rawSystemPrompt: unknown;
+  config: unknown;
+  allowClientConfig: boolean;
+  messages: Array<{ role: string; content: string }>;
+  attachments?: AttachmentContent[];
+  contextText: string;
+  session: AgentWorkspaceSession;
+  tools: Record<string, unknown>;
+  workspace: WorkspaceContext;
+  changes: AssistantChange[];
+  codexSystemPrompt: string;
+};

@@ -98,6 +98,8 @@ export const useCodexRuntime = ({ apiFetch, settingsOpen, success, showError }: 
       setCodexAuthLoggedIn(Boolean(result?.loggedIn));
       setCodexAuthStatus(String(result?.status || ''));
     } catch (err) {
+      setCodexAuthLoggedIn(false);
+      setCodexAuthStatus((err as Error).message || 'Could not check Codex account');
       if (!silent) {
         showError((err as Error).message || 'Failed to load Codex auth status');
       }
@@ -113,8 +115,8 @@ export const useCodexRuntime = ({ apiFetch, settingsOpen, success, showError }: 
       if (!nextRuntime) return;
       setCodexRuntime(nextRuntime);
       setCodexRuntimeStatus(
-        `Container ${nextRuntime.containerName || 'unknown'}: ${
-          nextRuntime.running ? 'running' : nextRuntime.exists ? 'stopped' : 'not created'
+        `Codex ${nextRuntime.containerName || 'gateway'}: ${
+          nextRuntime.running ? 'connected' : nextRuntime.exists ? 'stopped' : 'not connected'
         }`,
       );
     } catch (err) {

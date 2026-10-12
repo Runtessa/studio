@@ -1,4 +1,6 @@
 import dynamic from "next/dynamic";
+import type { AssistantAttachment } from '@/lib/assistant/attachment-types';
+import type { PreviewSource } from './capturePreview';
 import type { ActiveFile, AclConfigDto } from "@/components/editor/types";
 import type { AssistantChange } from "@/lib/assistant/types";
 import type {
@@ -19,6 +21,7 @@ export type AiMessage = {
   id: string;
   role: "user" | "assistant";
   content: string;
+  attachments?: AssistantAttachment[];
   createdAt: string;
   changes?: AssistantChange[];
   events?: AssistantRunEvent[];
@@ -27,6 +30,8 @@ export type AiMessage = {
   liveFiles?: LiveWorkspaceFileUpdate[];
   conflicts?: AssistantRunConflict[];
   rolledBack?: boolean;
+  runId?: string;
+  status?: 'running' | 'completed' | 'failed';
 };
 
 export type LiveWorkspaceFileUpdate = {
@@ -36,6 +41,7 @@ export type LiveWorkspaceFileUpdate = {
 };
 
 export type AiSettings = {
+  readOnly?: boolean;
   model: string;
   allowClientConfig: boolean;
   watchPreviewExceptions: boolean;
@@ -112,14 +118,17 @@ export type EditorAiPanelProps = {
   apiFetch: ApiFetch;
   apiStreamFetch: ApiStreamFetch;
   tenantHost: string;
+  getPreviewSource?: () => PreviewSource | null;
   activeFile: ActiveFile | null;
+  openFiles?: ActiveFile[];
+  getEditorSelection?: () => import('@/lib/assistant/respond-runtime/editor-context').EditorSelection | null;
   fileContents: Record<string, string>;
   savedContents: Record<string, string>;
   aclConfig: AclConfigDto | null;
-  onWorkspaceRefresh: () => void;
+  onWorkspaceRefresh: (changes?: AssistantChange[], options?: { preserveBuffers?: boolean }) => void | Promise<void>;
   onOpenChangeInMainEditor?: (diff: ChangeDiffPayload) => void;
   onLiveWorkspaceFileUpdate?: (file: LiveWorkspaceFileUpdate) => void;
-  onLiveWorkspaceRunStateChange?: (state: "committed" | "reverted") => void;
+  onLiveWorkspaceRunStateChange?: (state: 'started' | 'committed' | 'reverted') => void;
 };
 
 export const STORAGE_PREFIX = "editor-ai-chat";
@@ -480,24 +489,7 @@ export const buildArchivedRunMessage = (input: {
   return "No stored assistant text for this run.";
 };
 
-export const isMetaLogLine = (line: string) =>
-  /^\[(codex|gateway|stderr)\]/i.test(String(line || "").trim());
-
-export const stripMetaLogLines = (text: string) => {
-  const lines = String(text || "").split("\n");
-  return lines.filter((line) => !isMetaLogLine(line)).join("\n");
-};
-
-export const normalizeAssistantMessage = (text: string) => {
-  const cleaned = stripMetaLogLines(String(text || "")).trim();
-  if (!cleaned) return "";
-  let output = cleaned;
-  output = output.replace(/\b(Issues:)\s*/gi, "$1\n");
-  output = output.replace(/\b(Questions:)\s*/gi, "$1\n");
-  output = output.replace(/\s(?=\d+\)\s)/g, "\n");
-  output = output.replace(/\n{3,}/g, "\n\n");
-  return output.trim();
-};
+export {isMetaLogLine,stripMetaLogLines,normalizeAssistantMessage} from './messageText';
 
 export function ThinkingIndicator() {
   return (

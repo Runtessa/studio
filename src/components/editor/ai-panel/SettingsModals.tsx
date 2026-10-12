@@ -154,16 +154,13 @@ export function SettingsModals({
             options={
               loadingModels
                 ? [{ label: 'Loading models…', value: settings.model || '' }]
-                : models.length
-                  ? models.map((model) => ({ label: model, value: model }))
-                  : [
-                      {
-                        label: settings.model || 'default',
-                        value: settings.model || '',
-                      },
-                    ]
+                : [
+                    { label: profile.model ? `Codex default (${profile.model})` : 'Codex default', value: '' },
+                    ...Array.from(new Set([settings.model, ...models])).filter(Boolean)
+                      .map((model) => ({ label: model, value: model })),
+                  ]
             }
-            disabled={!settings.allowClientConfig && !settings.model}
+            disabled={loadingModels || !settings.allowClientConfig}
           />
           <div className="space-y-2">
             <div className="flex items-center justify-between">

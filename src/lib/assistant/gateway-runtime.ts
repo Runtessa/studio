@@ -102,6 +102,18 @@ export const getCodexGatewayRuntimeStateForUser = async (
     } catch {
       // keep defaults
     }
+    let running = false;
+    if (mode !== 'off' && mode !== 'none' && mode !== 'disabled') {
+      try {
+        const response = await fetch(`${raw.replace(/\/+$/, '')}/health`, {
+          signal: AbortSignal.timeout(3000),
+        });
+        const health = await response.json();
+        running = response.ok && health.ok === true;
+      } catch {
+        // External runtime must report its actual connection state.
+      }
+    }
     return {
       mode,
       userKey,
@@ -112,8 +124,8 @@ export const getCodexGatewayRuntimeStateForUser = async (
       host,
       port,
       baseUrl: raw.replace(/\/+$/, ''),
-      exists: true,
-      running: true,
+      exists: running,
+      running,
     };
   }
 
