@@ -1,4 +1,4 @@
-import { createCipheriv, createDecipheriv, randomBytes } from 'crypto';
+import { encryptSecretPayload, decryptSecretPayload, previousEncryptionKeys } from '@idp/shared/dist/security/secret-crypto';
 
 export type EncryptedPayload = {
   iv: string;
@@ -27,25 +27,9 @@ export const getEncryptionKey = () => {
 };
 
 export const encryptSecret = (value: string): EncryptedPayload => {
-  const encryptionKey = getEncryptionKey();
-  const iv = randomBytes(12);
-  const cipher = createCipheriv('aes-256-gcm', encryptionKey, iv);
-  const encrypted = Buffer.concat([cipher.update(value, 'utf8'), cipher.final()]);
-  const authTag = cipher.getAuthTag();
-  return {
-    iv: iv.toString('hex'),
-    authTag: authTag.toString('hex'),
-    encryptedValue: encrypted.toString('hex'),
-  };
+  return encryptSecretPayload(value, getEncryptionKey());
 };
 
 export const decryptSecret = (payload: EncryptedPayload): string => {
-  const encryptionKey = getEncryptionKey();
-  const iv = Buffer.from(payload.iv, 'hex');
-  const authTag = Buffer.from(payload.authTag, 'hex');
-  const encrypted = Buffer.from(payload.encryptedValue, 'hex');
-  const decipher = createDecipheriv('aes-256-gcm', encryptionKey, iv);
-  decipher.setAuthTag(authTag);
-  const decrypted = Buffer.concat([decipher.update(encrypted), decipher.final()]);
-  return decrypted.toString('utf8');
+  return decryptSecretPayload(payload, [getEncryptionKey(), ...previousEncryptionKeys()]);
 };

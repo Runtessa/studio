@@ -8,6 +8,9 @@ import { decryptSecret } from '@/lib/crypto';
 import { decryptPasswordFields } from '@/lib/adapter-config-passwords';
 import { migrateOrmModels } from '@/lib/orm-migration';
 import { compileOrmSource } from '@/lib/orm-compiler';
+import { activateModelSnapshot, modelSnapshotHash } from '@idp/shared/dist/runtime/model-activation';
+import type { EntityManager } from 'typeorm';
+import { validateTenantPostgresConfig } from '@idp/shared/dist/runtime/postgres-config';
 
 type AdapterConfig = Record<string, unknown> | string;
 
@@ -120,7 +123,7 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
   const tenant = await resolveTenant(req, user, 'ide.models.migrate');
   const action = req.body?.action ?? 'apply';
   const expectedPlanHash = req.body?.expectedPlanHash;
-  if (!['plan', 'apply'].includes(action) || (expectedPlanHash !== undefined && (typeof expectedPlanHash !== 'string' || !/^[a-f0-9]{64}$/.test(expectedPlanHash)))) {
+  if ((req.body?.expectedModelHash !== undefined && (typeof req.body.expectedModelHash !== 'string' || !/^[a-f0-9]{64}$/.test(req.body.expectedModelHash))) || !['plan', 'apply'].includes(action) || (expectedPlanHash !== undefined && (typeof expectedPlanHash !== 'string' || !/^[a-f0-9]{64}$/.test(expectedPlanHash)))) {
     res.status(400).json({ error: 'Invalid migration action or plan hash' });
     return;
   }
@@ -146,33 +149,35 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
 
   ensureAdapterAccess(tenant, adapter, key);
 
-  const modelRepo = CoreDataSource.getRepository(OrmModel);
-  const models = await modelRepo.find({
-    where: { tenant: { id: tenant.id } },
-    relations: ['sourceCode', 'compiledCode'],
-    order: { path: 'ASC' },
-  });
-  if (!models.length) {
-    res.status(400).json({ error: 'No ORM models defined for tenant' });
-    return;
-  }
+  const readModels = async (manager?: EntityManager) => {
+    const modelRepo = (manager ?? CoreDataSource).getRepository(OrmModel);
+    const models = await modelRepo.find({
+      where: { tenant: { id: tenant.id } },
+      relations: ['sourceCode', 'compiledCode'],
+      order: { path: 'ASC' },
+    });
+    if (!models.length) {
+      throw Object.assign(new Error('No ORM models defined for tenant'), { statusCode: 400 });
+    }
 
-  const modelSources = models.map((model) => {
-    const code = model.code || '';
-    const ext = model.fileExtension || 'js';
-    if (model.codeBlob) {
-      return { path: model.path, code: model.codeBlob };
-    }
-    try {
-      return { path: model.path, code: compileOrmSource(code, ext) };
-    } catch (err) {
-      const error = new Error(
-        `Failed to compile model ${model.path}: ${(err as Error).message}`
-      );
-      (error as any).statusCode = 400;
-      throw error;
-    }
-  });
+    const modelSources = models.map((model) => {
+      const code = model.code || '';
+      const ext = model.fileExtension || 'js';
+      if (model.codeBlob) {
+        return { path: model.path, code: model.codeBlob };
+      }
+      try {
+        return { path: model.path, code: compileOrmSource(code, ext) };
+      } catch (err) {
+        const error = new Error(
+          `Failed to compile model ${model.path}: ${(err as Error).message}`
+        );
+        (error as any).statusCode = 400;
+        throw error;
+      }
+    });
+    return modelSources;
+  };
   const secretValue = await resolveSecretValue(tenant, adapter, key);
   const config = selectReadWriteConfig(secretValue, 'write');
   let resolvedConfig: AdapterConfig = config;
@@ -189,7 +194,10 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
     }
   }
 
-  const result = await migrateOrmModels(modelSources, adapter,
-    typeof resolvedConfig === 'string' ? resolvedConfig : normalizeDbConfig(resolvedConfig), { action, expectedPlanHash });
+  const dbConfig = typeof resolvedConfig === 'string' ? resolvedConfig : normalizeDbConfig(resolvedConfig);
+  if (adapter === 'postgres') await validateTenantPostgresConfig(dbConfig);
+  const result = action === 'plan'
+    ? await (async () => { const modelSources = await readModels(); return { ...await migrateOrmModels(modelSources, adapter, dbConfig, { action, expectedPlanHash }), modelHash: modelSnapshotHash(modelSources) }; })()
+    : await activateModelSnapshot({ source: CoreDataSource, tenantId: tenant.id, adapter, key, config: dbConfig, readModels, expectedPlanHash, expectedModelHash: req.body?.expectedModelHash, migrate: migrateOrmModels });
   res.status(200).json(result);
 });
