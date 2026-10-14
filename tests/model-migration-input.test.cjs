@@ -75,3 +75,15 @@ test("model migration loads relational source and compiled code with the canonic
     { path: "models/Task.js", code: "compiled entity" },
   ]);
 });
+
+test('invalid schema action or plan hash is rejected before resolving models or credentials', async () => {
+  const handler = load('src/pages/api/models/migrate.ts', {
+    '@/lib/api-helpers': { withApiHandler: (handler) => handler },
+    '@/lib/auth': { requireUser: async () => ({ id: 1 }) },
+    '@/lib/tenancy': { resolveTenant: async () => ({ id: 'tenant' }) },
+  }).default;
+  for (const body of [{ action: 'drop' }, { action: 1 }, { expectedPlanHash: 'invalid' }, { expectedPlanHash: null }]) {
+    const res = response(); await handler({ method: 'POST', body }, res);
+    assert.equal(res.statusCode, 400);
+  }
+});

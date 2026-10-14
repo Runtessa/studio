@@ -3,12 +3,11 @@ import { NextApiRequest, NextApiResponse } from 'next';
 import { withApiHandler } from '@/lib/api-helpers';
 import { requireUser } from '@/lib/auth';
 import { CoreDataSource } from '@/lib/core-db';
-import { SourceCode, UIPackage } from '@idp/shared';
+import { UIPackage } from '@idp/shared';
 import { resolveTenant } from '@/lib/tenancy';
-import redis from '@/lib/redis';
-import { generateVersion } from '@/lib/version';
-import { getTailwindPackageName, isTailwindPackageName } from '@/lib/tailwindBuilder';
-import { publishTailwindPackage } from '@/lib/ui-entity-tailwind';
+
+import { publishCurrent } from '@/lib/publication/publish-current';
+import { cleanupPublicationCache } from '@/lib/publication/cache-cleanup';
 
 export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) => {
   if (req.method !== 'POST') {
@@ -29,27 +28,8 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
     return;
   }
 
-  const sourceRepo = CoreDataSource.getRepository(SourceCode);
-  const publishedSource = sourceRepo.create({ code: pkg.code });
-  await sourceRepo.save(publishedSource);
+  const result = await publishCurrent(CoreDataSource, { kind: 'ui', id: pkg.id }, tenant.id, user);
+  await cleanupPublicationCache(result.cacheKeys);
 
-  pkg.publishedVersion = generateVersion();
-  pkg.publishedSourceCode = publishedSource;
-  pkg.publishedCodeBlob = pkg.codeBlob;
-  pkg.publishedDependencies = pkg.dependencies ?? [];
-  pkg.publishedFileExtension = pkg.fileExtension;
-  pkg.publishedAt = new Date();
-  await repo.save(pkg);
-
-  if (!isTailwindPackageName(pkg.name)) {
-    await publishTailwindPackage(tenant.id, getTailwindPackageName(pkg.name), pkg.version);
-  }
-
-  const encoded = encodeURIComponent(pkg.name);
-  await redis.del(
-    `registry:tenant:${tenant.id}:${encoded}:latest`,
-    `registry:tenant:${tenant.id}:${encoded}:${pkg.version}`
-  );
-
-  res.status(200).json(serialize(pkg));
+  res.status(200).json(serialize(result.record as UIPackage));
 });

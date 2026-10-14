@@ -118,6 +118,12 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
 
   const user = await requireUser(req);
   const tenant = await resolveTenant(req, user, 'ide.models.migrate');
+  const action = req.body?.action ?? 'apply';
+  const expectedPlanHash = req.body?.expectedPlanHash;
+  if (!['plan', 'apply'].includes(action) || (expectedPlanHash !== undefined && (typeof expectedPlanHash !== 'string' || !/^[a-f0-9]{64}$/.test(expectedPlanHash)))) {
+    res.status(400).json({ error: 'Invalid migration action or plan hash' });
+    return;
+  }
   const adapterKey = normalizeKey(req.body?.adapterKey);
   const parsed = parseAdapterKey(adapterKey);
   const adapter = parsed.adapter;
@@ -184,6 +190,6 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
   }
 
   const result = await migrateOrmModels(modelSources, adapter,
-    typeof resolvedConfig === 'string' ? resolvedConfig : normalizeDbConfig(resolvedConfig));
+    typeof resolvedConfig === 'string' ? resolvedConfig : normalizeDbConfig(resolvedConfig), { action, expectedPlanHash });
   res.status(200).json(result);
 });

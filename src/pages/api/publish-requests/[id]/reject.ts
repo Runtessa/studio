@@ -52,10 +52,13 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
     token: user.token ?? null,
   });
 
-  request.status = PublishRequestStatus.REJECTED;
-  request.approver = { id: coreUser.id } as any;
-  request.rejectionNote = note;
-  await repo.save(request);
+  const patch = { status: PublishRequestStatus.REJECTED, approver: { id: coreUser.id } as any, rejectionNote: note };
+  const result = await repo.update({ id: request.id, status: PublishRequestStatus.PENDING }, patch);
+  if (!result.affected) {
+    res.status(409).json({ error: 'Publication was already processed' });
+    return;
+  }
+  Object.assign(request, patch);
 
   res.status(200).json(request);
 });

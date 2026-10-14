@@ -20,21 +20,38 @@ for (const [kind, file, entity, serializer, wrapped] of [
       fileExtension: 'js', dependencies: ['react'], ownerTeamId: 1 };
     Object.defineProperty(record, 'publishedCode', { get: () => record.publishedSourceCode?.code });
     const saved = [], invalidated = [], cssPublished = [];
+    const dataSource = { getRepository: (name) => name === entity
+      ? { findOne: async ({ where }) => {
+        if (where.name?.endsWith('__tw')) return null;
+        assert.equal(where.id, 'record-1');
+        if (!wrapped) assert.deepEqual(where.tenant, { id: 'tenant-a' });
+        return record;
+      }, save: async (row) => { assert.equal(row, record); saved.push('artifact'); return row; } }
+      : { create: (value) => ({ ...value }), save: async (row) => { saved.push(row.code); return row; } } };
+    dataSource.transaction = async (operation) => operation(dataSource);
+    const publicationItems = load('src/lib/publication/publish-item.ts', {
+      '../shared-project-access': access,
+      '@idp/shared': new Proxy(require('@idp/shared'), { get: (value, key) => key === 'HttpMethod' ? value[key] : key }),
+    });
+    const styleSnapshots = load('src/lib/publication/style-snapshot.ts', { '../tailwindBuilder': tailwind });
+    const currentPublication = load('src/lib/publication/publish-current.ts', {
+      './publish-item': publicationItems, './style-snapshot': styleSnapshots,
+      '../version': { generateVersion: () => 'published-test-version' },
+    });
+    const cacheCleanup = load('src/lib/publication/cache-cleanup.ts', {
+      '../redis': { __esModule: true, default: { del: async (...keys) => invalidated.push(...keys) } },
+    });
     const user = actor('platform_admin');
     const handler = route(file, user, {
       '@/lib/api/tenant-artifact-dto': dto, '@/lib/api/shared-artifact-dto': sharedDto,
       '@/lib/shared-project-access': access, '@/lib/tailwindBuilder': tailwind,
       '@/lib/version': { generateVersion: () => 'published-test-version' },
+      '@/lib/publication/publish-current': currentPublication,
+      '@/lib/publication/cache-cleanup': cacheCleanup,
       '@/lib/redis': { __esModule: true, default: { del: async (...keys) => invalidated.push(...keys) } },
       '@/lib/ui-entity-tailwind': { publishTailwindPackage: async (...args) => cssPublished.push(args) },
       '@/lib/shared-tailwind': { publishGlobalTailwindPackage: async (...args) => cssPublished.push(args) },
-      '@/lib/core-db': { ensureCoreSchema: async () => {}, CoreDataSource: { getRepository: (name) => name === entity
-        ? { findOne: async ({ where }) => {
-          assert.equal(where.id, 'record-1');
-          if (!wrapped) assert.deepEqual(where.tenant, { id: 'tenant-a' });
-          return record;
-        }, save: async (row) => { assert.equal(row, record); saved.push('artifact'); } }
-        : { create: (value) => ({ ...value }), save: async (row) => { saved.push(row.code); } } } },
+      '@/lib/core-db': { ensureCoreSchema: async () => {}, CoreDataSource: dataSource },
     });
     const res = response(); await handler(request('POST'), res);
     assert.equal(res.statusCode, 200);
@@ -48,7 +65,7 @@ for (const [kind, file, entity, serializer, wrapped] of [
       assert.ok(invalidated.includes('module:published:tenant-a:POST'));
     } else {
       assert.equal(record.publishedCodeBlob, 'draft-bundle'); assert.deepEqual(record.publishedDependencies, ['react']);
-      if (kind.includes('UI')) { assert.equal(cssPublished.length, 1); assert.equal(invalidated.length, 2); }
+      if (kind.includes('UI')) assert.equal(invalidated.length, 2);
     }
   });
 }

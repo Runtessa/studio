@@ -3,9 +3,11 @@ import { NextApiRequest, NextApiResponse } from 'next';
 import { withApiHandler } from '@/lib/api-helpers';
 import { requireAdmin } from '@/lib/auth';
 import { CoreDataSource, ensureCoreSchema } from '@/lib/core-db';
-import { GlobalModulePackage, SourceCode } from '@idp/shared';
-import { generateVersion } from '@/lib/version';
-import { claimSharedProjectOwnershipIfNeeded, ensureSharedProjectPublishable } from '@/lib/shared-project-access';
+import { GlobalModulePackage } from '@idp/shared';
+import { ensureSharedProjectPublishable } from '@/lib/shared-project-access';
+
+import { publishCurrent } from '@/lib/publication/publish-current';
+import { cleanupPublicationCache } from '@/lib/publication/cache-cleanup';
 
 export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) => {
   if (req.method !== 'POST') {
@@ -26,23 +28,10 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
     res.status(404).json({ error: 'Shared backend project not found' });
     return;
   }
-  const access = ensureSharedProjectPublishable(user, pkg);
-  const claimed = claimSharedProjectOwnershipIfNeeded(pkg, access);
-  if (claimed) {
-    await repo.save(pkg);
-  }
+  ensureSharedProjectPublishable(user, pkg);
 
-  const sourceRepo = CoreDataSource.getRepository(SourceCode);
-  const publishedSource = sourceRepo.create({ code: pkg.code });
-  await sourceRepo.save(publishedSource);
+  const result = await publishCurrent(CoreDataSource, { kind: 'shared', sharedType: 'backend', id: pkg.id }, '', user);
+  await cleanupPublicationCache(result.cacheKeys);
 
-  pkg.publishedVersion = generateVersion();
-  pkg.publishedSourceCode = publishedSource;
-  pkg.publishedCodeBlob = pkg.codeBlob;
-  pkg.publishedDependencies = pkg.dependencies ?? [];
-  pkg.publishedFileExtension = pkg.fileExtension;
-  pkg.publishedAt = new Date();
-  await repo.save(pkg);
-
-  res.status(200).json({ package: serialize(pkg, user) });
+  res.status(200).json({ package: serialize(result.record as GlobalModulePackage, user) });
 });
