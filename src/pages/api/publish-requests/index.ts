@@ -14,6 +14,7 @@ import { resolveTenant } from '@/lib/tenancy';
 import { ensureCoreUserIdentity } from '@/lib/core-users';
 import { assertIdePermissions } from '@/lib/tenant-permissions';
 import { ensureSharedProjectEditable } from '@/lib/shared-project-access';
+import { snapshotPublicationStyles } from '@/lib/publication/style-snapshot';
 
 export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) => {
   if (req.method !== 'POST') {
@@ -165,6 +166,8 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
     res.status(400).json({ error: 'No valid items found to publish' });
     return;
   }
+
+  await snapshotPublicationStyles(items, tenant.id, CoreDataSource.manager);
 
   const coreUser = await ensureCoreUserIdentity({
     id: user.id,

@@ -3,10 +3,11 @@ import { NextApiRequest, NextApiResponse } from 'next';
 import { withApiHandler } from '@/lib/api-helpers';
 import { requireUser } from '@/lib/auth';
 import { CoreDataSource } from '@/lib/core-db';
-import { HttpMethod, ModuleEntity, SourceCode } from '@idp/shared';
+import { ModuleEntity } from '@idp/shared';
 import { resolveTenant } from '@/lib/tenancy';
-import redis from '@/lib/redis';
-import { generateVersion } from '@/lib/version';
+
+import { publishCurrent } from '@/lib/publication/publish-current';
+import { cleanupPublicationCache } from '@/lib/publication/cache-cleanup';
 
 export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) => {
   if (req.method !== 'POST') {
@@ -27,26 +28,8 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
     return;
   }
 
-  const previousMethod = (mod.publishedMethod ?? mod.method) as HttpMethod;
-  const nextMethod = mod.method;
-  const sourceRepo = CoreDataSource.getRepository(SourceCode);
-  const publishedSource = sourceRepo.create({ code: mod.code });
-  await sourceRepo.save(publishedSource);
+  const result = await publishCurrent(CoreDataSource, { kind: 'module', id: mod.id }, tenant.id, user);
+  await cleanupPublicationCache(result.cacheKeys);
 
-  mod.publishedVersion = generateVersion();
-  mod.publishedRoutePath = mod.routePath;
-  mod.publishedMethod = mod.method;
-  mod.publishedSourceCode = publishedSource;
-  mod.publishedFileExtension = mod.fileExtension;
-  mod.publishedAt = new Date();
-  await repo.save(mod);
-
-  await redis.del(
-    `module:published:${tenant.id}:${previousMethod}`,
-    `module:published:${tenant.id}:${nextMethod}`,
-    `module:published:${tenant.id}:${previousMethod}:is_publish_workflow`,
-    `module:published:${tenant.id}:${nextMethod}:is_publish_workflow`
-  );
-
-  res.status(200).json(serialize(mod));
+  res.status(200).json(serialize(result.record as ModuleEntity));
 });

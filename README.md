@@ -147,6 +147,33 @@ the child receives only the selected tenant adapter configuration. See
 [`docker/runtime/README.md`](../../docker/runtime/README.md) for the Linux runtime
 requirements, isolation tests and remaining network/resource limits.
 
+Model schema updates now preview TypeORM's generated SQL and automatically apply
+only additive statements. Dropping/renaming columns, changing existing types and
+other unsupported changes return 409 before any planned DDL is executed. Use
+`POST /api/models/migrate` with `action: "plan"` to inspect the plan; apply with
+`action: "apply"` and its `expectedPlanHash` to reject a stale review. Ordinary
+model saves retain safe table/column creation. PostgreSQL updates and their history
+are transactional and serialized. MySQL DDL is not transactional; SQL Server and
+MySQL need their own live integration verification.
+
+## Publication consistency
+
+Single-item publication and publish-request approval use transactions. Backend,
+frontend, shared packages, submitted stylesheets and approval status commit
+together or roll back together. Request approval is idempotent and approval/rejection
+races cannot overwrite a completed decision. Stylesheet source is captured when
+the request is submitted, so a later draft edit cannot change approved CSS.
+
+Runtime caches are tied to database publication revisions. Redis cleanup after
+commit is best effort and cannot serve the preceding revision to a new database
+snapshot. An approval can return `cacheRefreshPending: true` after successful commit.
+Published source and compiled code are separate snapshots from editable drafts.
+
+Run `npm run test:data-safety` from the platform root for the native PostgreSQL
+failure, concurrency, snapshot and stale-cache scenarios. Build Studio with
+`NEXT_DIST_DIR=.next-build-check npm run build` to keep its output separate from a
+running development session.
+
 ## Request diagnostics
 
 Failed API requests record status, method, pathname, error class and source frames.
