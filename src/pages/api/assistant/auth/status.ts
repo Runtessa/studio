@@ -1,3 +1,4 @@
+import { fetchCodexGateway } from '@/lib/assistant/gateway-fetch';
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { withApiHandler } from '@/lib/api-helpers';
 import { requireUser } from '@/lib/auth';
@@ -16,8 +17,9 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
 
   let response: Response;
   try {
-    response = await fetch(
-      `${base}/v1/login/status?userId=${encodeURIComponent(String(user.id))}`
+    response = await fetchCodexGateway(
+      `${base}/v1/login/status?userId=${encodeURIComponent(String(user.id))}`,
+      { userId: user.id },
     );
   } catch (error) {
     throw new Error(

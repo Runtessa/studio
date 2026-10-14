@@ -1,3 +1,4 @@
+import { fetchCodexGateway } from '@/lib/assistant/gateway-fetch';
 import { resolveCodexGatewayBaseForUser } from '@/lib/assistant/gateway-runtime';
 import type { AgentWorkspaceSession } from '@/lib/assistant/respond-runtime';
 
@@ -19,7 +20,7 @@ const postGatewayWorkspace = async <T>(
   userName?: string | null,
 ): Promise<T> => {
   const runtime = await resolveCodexGatewayBaseForUser(userId, userName);
-  const response = await fetch(`${runtime.baseUrl}${path}`, {
+  const response = await fetchCodexGateway(`${runtime.baseUrl}${path}`, { userId, tenantId: String(payload.tenantId) }, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(payload),

@@ -1,3 +1,4 @@
+import { fetchCodexGateway } from '@/lib/assistant/gateway-fetch';
 import { resolveCodexGatewayBaseForUser } from './gateway-runtime';
 import { resolveCodexModelFromEnv } from './codex';
 
@@ -10,8 +11,9 @@ export const loadCodexModelCatalog = async (
   const runtime = await resolveCodexGatewayBaseForUser(userId, userName);
   let response: Response;
   try {
-    response = await fetch(
+    response = await fetchCodexGateway(
       `${runtime.baseUrl}/v1/models?userId=${encodeURIComponent(String(userId))}`,
+      { userId },
       {
         signal: AbortSignal.timeout(20000),
       },
