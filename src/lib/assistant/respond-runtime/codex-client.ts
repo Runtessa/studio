@@ -1,9 +1,5 @@
 import { fetchCodexGateway } from '@/lib/assistant/gateway-fetch';
 import type { AttachmentContent } from '@/lib/assistant/attachment-types';
-import { spawn } from 'node:child_process';
-import { promises as fs } from 'node:fs';
-import { tmpdir } from 'node:os';
-import path from 'node:path';
 import { resolveCodexGatewayBase } from '@/lib/assistant/gateway';
 import { loadCodexModelCatalog } from '@/lib/assistant/model-catalog';
 import {
@@ -203,124 +199,6 @@ export type CodexExecInput = {
   signal?: AbortSignal;
 };
 
-const executeCodexCli = async (input: CodexExecInput) => {
-  if (input.attachments?.length) throw new Error('File and image attachments require the Codex gateway. Enable it in Assistant settings.');
-  const outputFile = path.join(tmpdir(), `idp-codex-last-${input.runId}.txt`);
-  const prompt = buildCodexPrompt(
-    input.messages,
-    input.contextText,
-    buildCliJsonSystemPrompt(input.systemPrompt),
-    input.session,
-  );
-  const runOnce = async (model?: string) =>
-    new Promise<{
-      stdoutText: string;
-      stderrText: string;
-      exitCode: number;
-    }>((resolve, reject) => {
-      const args = [
-        'exec',
-        '--json',
-        '--skip-git-repo-check',
-        '-C',
-        resolveCodexCwd(),
-        '--output-last-message',
-        outputFile,
-      ];
-      if (model) args.push('-m', model);
-      args.push('-');
-      const child = spawn('codex', args, {
-        stdio: ['pipe', 'pipe', 'pipe'],
-      });
-      const timeoutMs = resolveCodexTimeoutMs();
-      let stdoutText = '';
-      let stderrText = '';
-      let lineBuffer = '';
-      let stderrLineBuffer = '';
-      let timedOut = false;
-      const timeoutHandle = setTimeout(() => {
-        timedOut = true;
-        input.onLine?.(`[codex] timed out after ${Math.floor(timeoutMs / 1000)}s`);
-        child.kill('SIGTERM');
-        setTimeout(() => child.kill('SIGKILL'), 3000).unref?.();
-      }, timeoutMs);
-
-      child.stdout.on('data', (chunk: Buffer | string) => {
-        const text = String(chunk);
-        stdoutText += text;
-        lineBuffer += text;
-        let idx = lineBuffer.indexOf('\n');
-        while (idx !== -1) {
-          const line = lineBuffer.slice(0, idx).trim();
-          lineBuffer = lineBuffer.slice(idx + 1);
-          if (line) input.onLine?.(line);
-          idx = lineBuffer.indexOf('\n');
-        }
-      });
-
-      child.stderr.on('data', (chunk: Buffer | string) => {
-        const text = String(chunk);
-        stderrText += text;
-        stderrLineBuffer += text;
-        let idx = stderrLineBuffer.indexOf('\n');
-        while (idx !== -1) {
-          const line = stderrLineBuffer.slice(0, idx).trim();
-          stderrLineBuffer = stderrLineBuffer.slice(idx + 1);
-          if (line) input.onLine?.(`[stderr] ${line}`);
-          idx = stderrLineBuffer.indexOf('\n');
-        }
-      });
-
-      child.on('error', (error) => reject(error));
-      child.on('close', (code) => {
-        clearTimeout(timeoutHandle);
-        const pendingStdout = lineBuffer.trim();
-        if (pendingStdout) input.onLine?.(pendingStdout);
-        const pendingStderr = stderrLineBuffer.trim();
-        if (pendingStderr) input.onLine?.(`[stderr] ${pendingStderr}`);
-        resolve({
-          stdoutText,
-          stderrText,
-          exitCode: timedOut ? 124 : typeof code === 'number' ? code : 1,
-        });
-      });
-
-      child.stdin.write(prompt);
-      child.stdin.end();
-    });
-
-  const isUnsupportedModelError = (text: string) =>
-    /model is not supported when using codex with a chatgpt account/i.test(text) ||
-    /unsupported model/i.test(text);
-
-  let result = await runOnce(input.model);
-  if (input.model) {
-    const detail = `${result.stderrText}\n${result.stdoutText}`;
-    if (isUnsupportedModelError(detail)) {
-      result = await runOnce(undefined);
-    }
-  }
-
-  const { stdoutText, stderrText, exitCode } = result;
-  if (exitCode !== 0) {
-    const detail = (stderrText || stdoutText || '').trim();
-    throw new Error(detail || `codex exec failed with exit code ${exitCode}`);
-  }
-
-  let message = '';
-  try {
-    message = (await fs.readFile(outputFile, 'utf8')).trim();
-  } catch {
-    message = '';
-  } finally {
-    await fs.unlink(outputFile).catch(() => undefined);
-  }
-
-  if (!message) message = stdoutText.trim();
-  if (!message) message = 'Codex completed with no response text.';
-  return { message };
-};
-
 const executeCodexGateway = async (input: CodexExecInput) => {
   const runtime = await resolveCodexGatewayBaseForUser(input.userId, input.userName);
   const baseUrl = runtime.baseUrl;
@@ -488,7 +366,7 @@ export const executeCodex = async (input: CodexExecInput) => {
   if (shouldUseGateway) {
     return executeCodexGateway(input);
   }
-  return executeCodexCli(input);
+  throw new Error('The assistant requires the isolated gateway. Start it and configure its connection.');
 };
 
 export const getLatestUserPrompt = (messages: Array<{ role: string; content: string }>) => {

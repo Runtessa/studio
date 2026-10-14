@@ -64,6 +64,10 @@ test("model migration loads relational source and compiled code with the canonic
         return { migrated: true };
       },
     },
+    '@idp/shared/dist/runtime/postgres-config': {validateTenantPostgresConfig: async (config) => {assert.equal(config.database, 'fixture');}},
+    '@idp/shared/dist/runtime/model-activation': {
+      activateModelSnapshot: async (input) => input.migrate(await input.readModels(), input.adapter, input.config, {}),
+    },
   }).default;
   const res = response();
   await handler(

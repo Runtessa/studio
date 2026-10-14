@@ -397,11 +397,12 @@ export const useEditorSaveActions = ({
       if (modelMigrationBusy) return;
       setModelMigrationBusy(true);
       try {
-        await apiFetch('/api/models/migrate', {
+        const result = await apiFetch('/api/models/migrate', {
           method: 'POST',
           body: adapterKey ? { adapterKey } : {},
         });
-        if (!options?.silent) success('Database updated');
+        if (result.pendingDraftChanges) showError('Recovered the previous activation. Activate again to apply the latest model edits.');
+        else if (!options?.silent) success('Models activated');
       } catch (err) {
         showError((err as Error).message || 'Migration failed');
       } finally {

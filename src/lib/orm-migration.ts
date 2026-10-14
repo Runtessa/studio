@@ -4,7 +4,7 @@ import type * as RuntimeProcess from '@idp/shared/dist/runtime/restricted-proces
 import type { OrmModelSource } from './orm-loader';
 import type { OrmMigrationInput, migrateOrmSchema } from '@idp/shared/dist/runtime/orm-migrate';
 
-export const migrateOrmModels = (models: OrmModelSource[], adapter: string, config: string | Record<string, unknown>, options: Pick<OrmMigrationInput, 'action' | 'expectedPlanHash'> = {}) => {
+export const migrateOrmModels = (models: OrmModelSource[], adapter: string, config: string | Record<string, unknown>, options: Pick<OrmMigrationInput, 'action' | 'expectedPlanHash' | 'operationId' | 'modelHash'> = {}) => {
   const nativeRequire = nodeModule.createRequire(path.join(process.cwd(), 'package.json'));
   // Resolve native files rather than letting Next relocate the filesystem boundary.
   const { runRestrictedProcess, runtimeDependencyRoots } = nativeRequire('@idp/shared/dist/runtime/restricted-process') as typeof RuntimeProcess;
