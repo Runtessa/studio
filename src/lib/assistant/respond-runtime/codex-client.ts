@@ -1,3 +1,4 @@
+import { fetchCodexGateway } from '@/lib/assistant/gateway-fetch';
 import type { AttachmentContent } from '@/lib/assistant/attachment-types';
 import { spawn } from 'node:child_process';
 import { promises as fs } from 'node:fs';
@@ -328,7 +329,7 @@ const executeCodexGateway = async (input: CodexExecInput) => {
   }
   const model = input.model || (await loadCodexModelCatalog(input.userId, input.userName)).defaultModel;
 
-  const response = await fetch(`${baseUrl}/v1/exec`, {
+  const response = await fetchCodexGateway(`${baseUrl}/v1/exec`, { userId: input.userId, tenantId: input.session?.tenant?.id }, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     signal: input.signal,

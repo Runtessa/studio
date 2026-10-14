@@ -98,6 +98,15 @@ It receives the authorized workspace, shared frontend/backend packages, active/o
 editor buffers and selected source ranges. Keep the gateway available while using
 Studio; its connection and model are shown in Agent settings.
 
+Initialize coordinated native assistant credentials from the platform root with
+`node scripts/assistant/init-secret.mjs`, then restart Studio and start the native
+gateway as described in the
+[gateway guide](https://github.com/Runtessa/assistant-gateway#connect-the-studio-assistant).
+`ASSISTANT_GATEWAY_SECRET` stays in private server environment files. All login,
+model, execution and workspace requests use the signed transport helper; user and
+tenant identity come from Studio authorization. Missing or mismatched credentials
+produce a connection error instead of an unauthenticated fallback.
+
 Each request has an independent run ID. Repeated delivery of the same request nonce
 reuses its result; different users, chats and fresh requests stay separate. Run
 history and saved-change checkpoints are retained in Redis for seven days. Legacy

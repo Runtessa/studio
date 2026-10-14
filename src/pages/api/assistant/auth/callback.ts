@@ -1,3 +1,4 @@
+import { fetchCodexGateway } from '@/lib/assistant/gateway-fetch';
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { withApiHandler } from '@/lib/api-helpers';
 import { requireUser } from '@/lib/auth';
@@ -28,7 +29,7 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
 
   let response: Response;
   try {
-    response = await fetch(`${base}/v1/login/callback`, {
+    response = await fetchCodexGateway(`${base}/v1/login/callback`, { userId: user.id }, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({

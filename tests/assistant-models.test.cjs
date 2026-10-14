@@ -10,6 +10,12 @@ const {
 
 const catalog = (configured) =>
   load('src/lib/assistant/model-catalog.ts', {
+    '@/lib/assistant/gateway-fetch': {
+      fetchCodexGateway: (url, identity, init) => {
+        assert.deepEqual(identity, { userId: 10 });
+        return fetch(url, init);
+      },
+    },
     './gateway-runtime': {
       resolveCodexGatewayBaseForUser: async (id) => {
         assert.equal(id, 10);
